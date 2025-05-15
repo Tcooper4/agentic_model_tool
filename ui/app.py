@@ -32,6 +32,24 @@ class AgenticModel:
             self.model = AutoModelForSequenceClassification.from_pretrained(model_name)
         st.success(f"✅ {self.model_type} model created.")
 
+    def run_llm_prompt(self, prompt_text, temperature, max_tokens, top_p, freq_penalty):
+        if self.llm_type == "Hugging Face (Free - CPU Only)":
+            inputs = self.tokenizer(prompt_text, return_tensors="pt")
+            outputs = self.model(**inputs)
+            return outputs.logits.argmax().item()
+
+        elif self.llm_type == "OpenAI (GPT-4)" and "openai_api_key" in st.session_state:
+            response = openai.Completion.create(
+                engine="gpt-4",
+                prompt=prompt_text,
+                max_tokens=max_tokens,
+                temperature=temperature,
+                top_p=top_p,
+                frequency_penalty=freq_penalty,
+                n=1
+            )
+            return response.choices[0].text.strip()
+
     def train_and_optimize(self, X_train, y_train):
         if self.model_type in ["LogisticRegression", "RandomForest", "XGBoost"]:
             if self.agentic_mode:
@@ -67,30 +85,8 @@ class AgenticModel:
             f1 = f1_score(y_test, predictions, average='weighted')
             st.write(f"✅ Model Performance - Accuracy: {accuracy:.4f}, F1-Score: {f1:.4f}")
 
-    def run_llm(self, texts):
-        if self.model_type == "LLM" and self.llm_type == "Hugging Face (Free - CPU Only)":
-            predictions = []
-            for text in texts:
-                inputs = self.tokenizer(text, return_tensors="pt")
-                outputs = self.model(**inputs)
-                predictions.append(outputs.logits.argmax().item())
-            return predictions
-
-        elif self.model_type == "LLM" and self.llm_type == "OpenAI (GPT-4)":
-            predictions = []
-            for text in texts:
-                response = openai.Completion.create(
-                    engine="gpt-4",
-                    prompt=f"Classify or generate text: {text}",
-                    max_tokens=50,
-                    n=1,
-                    temperature=0.7
-                )
-                predictions.append(response.choices[0].text.strip())
-            return predictions
-
-# ✅ Streamlit UI (Agentic Model Creation Tool)
-st.title("Autonomous Agentic Model Creation Tool (Agentic System)")
+# ✅ Streamlit UI (Advanced Agentic Model Creation Tool)
+st.title("Advanced Agentic Model Creation Tool (Agentic System)")
 
 st.sidebar.header("Model Configuration")
 model_type = st.sidebar.selectbox("Choose Model Type", ["LogisticRegression", "RandomForest", "XGBoost", "LLM"])
@@ -104,10 +100,29 @@ if llm_type == "OpenAI (GPT-4)":
 
 # ✅ Agentic Mode Toggle
 agentic_mode = st.sidebar.checkbox("Enable Agentic Mode (Auto-Optimization)", value=True)
-uploaded_file = st.file_uploader("Upload a CSV file for training")
+
+# ✅ LLM Settings (Advanced)
+if model_type == "LLM":
+    prompt_text = st.text_area("Enter your prompt for the LLM", placeholder="Type your prompt here...")
+    temperature = st.slider("Temperature", 0.0, 1.0, 0.7, 0.01)
+    max_tokens = st.slider("Max Tokens", 10, 500, 100)
+    top_p = st.slider("Top-P (Nucleus Sampling)", 0.0, 1.0, 0.9, 0.01)
+    freq_penalty = st.slider("Frequency Penalty", -2.0, 2.0, 0.0, 0.1)
+
+uploaded_file = st.file_uploader("Upload a CSV file for training (Optional for LLM)")
 
 if st.button("Create and Train Model"):
-    if uploaded_file:
+    # Initialize Agentic Model
+    agent = AgenticModel(model_type=model_type, llm_type=llm_type, agentic_mode=agentic_mode)
+    agent.create_model()
+
+    # ✅ LLM Prompt Handling
+    if model_type == "LLM" and prompt_text:
+        response = agent.run_llm_prompt(prompt_text, temperature, max_tokens, top_p, freq_penalty)
+        st.write("LLM Response:", response)
+    
+    # ✅ Non-LLM Models (CSV Required)
+    elif uploaded_file:
         data = pd.read_csv(uploaded_file)
         st.write("Uploaded Data Sample:", data.head())
 
@@ -116,18 +131,5 @@ if st.button("Create and Train Model"):
         y = data[target_column]
         X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
 
-        # Initialize Agentic Model
-        agent = AgenticModel(model_type=model_type, llm_type=llm_type, agentic_mode=agentic_mode)
-        agent.create_model()
-
-        # Train and Optimize (Agentic Behavior)
-        if model_type in ["LogisticRegression", "RandomForest", "XGBoost"]:
-            agent.train_and_optimize(X_train, y_train)
-            agent.evaluate_model(X_test, y_test)
-
-        elif model_type == "LLM":
-            texts = X.iloc[:, 0].astype(str).tolist()
-            predictions = agent.run_llm(texts)
-            data['Predictions'] = predictions
-            st.write("LLM Classification/Generation Results:", data[[target_column, 'Predictions']])
-            st.download_button("Download Predictions", data.to_csv(index=False), "predictions.csv")
+        agent.train_and_optimize(X_train, y_train)
+        agent.evaluate_model(X_test, y_test)
