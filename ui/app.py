@@ -69,7 +69,7 @@ class AgenticModel:
                     predictions = self.model.predict(X_train)
                     return accuracy_score(y_train, predictions)
                 
-                st.write("🚀 Optimizing model with Optuna...")
+                st.write("🚀 Optimizing model with Optuna (Auto-Optimization)...")
                 study = optuna.create_study(direction="maximize")
                 study.optimize(objective, n_trials=10)
                 self.best_params = study.best_params
@@ -85,48 +85,56 @@ class AgenticModel:
             f1 = f1_score(y_test, predictions, average='weighted')
             st.write(f"✅ Model Performance - Accuracy: {accuracy:.4f}, F1-Score: {f1:.4f}")
 
-# ✅ Streamlit UI (Advanced Agentic Model Creation Tool)
-st.title("Advanced Agentic Model Creation Tool (Agentic System)")
+# ✅ Streamlit UI (User-Friendly Agentic Model Tool)
+st.title("🌐 Agentic Model Creation Tool (Beginner-Friendly)")
 
-st.sidebar.header("Model Configuration")
+st.markdown("""
+### Welcome to the Agentic Model Tool! 🚀
+This tool allows you to easily create, optimize, and use machine learning models:
+- **Logistic Regression, Random Forest, XGBoost:** For data classification.
+- **LLM (GPT-4, Hugging Face):** For text generation or classification.
+- **Agentic Mode:** Automatically optimizes models for the best performance.
+""")
+
+st.sidebar.header("🔧 Model Configuration")
 model_type = st.sidebar.selectbox("Choose Model Type", ["LogisticRegression", "RandomForest", "XGBoost", "LLM"])
 llm_type = st.sidebar.selectbox("LLM Type", ["Hugging Face (Free - CPU Only)", "OpenAI (GPT-4)"])
 
 # ✅ Secure API Key Input (Only stored in session)
 if llm_type == "OpenAI (GPT-4)":
+    st.sidebar.write("🔑 **API Key Required for GPT-4**")
     openai_api_key = st.sidebar.text_input("Enter Your OpenAI API Key (Secure)", type="password")
     if openai_api_key:
         st.session_state["openai_api_key"] = openai_api_key
 
 # ✅ Agentic Mode Toggle
 agentic_mode = st.sidebar.checkbox("Enable Agentic Mode (Auto-Optimization)", value=True)
+st.sidebar.write("Agentic Mode automatically finds the best settings for your model.")
 
 # ✅ LLM Settings (Advanced)
 if model_type == "LLM":
+    st.markdown("### 📌 LLM Prompt Settings (Text Generation)")
     prompt_text = st.text_area("Enter your prompt for the LLM", placeholder="Type your prompt here...")
-    temperature = st.slider("Temperature", 0.0, 1.0, 0.7, 0.01)
-    max_tokens = st.slider("Max Tokens", 10, 500, 100)
-    top_p = st.slider("Top-P (Nucleus Sampling)", 0.0, 1.0, 0.9, 0.01)
-    freq_penalty = st.slider("Frequency Penalty", -2.0, 2.0, 0.0, 0.1)
+    st.write("Customize how the LLM responds:")
+    temperature = st.slider("Temperature (Creativity)", 0.0, 1.0, 0.7)
+    max_tokens = st.slider("Max Tokens (Response Length)", 10, 500, 100)
+    top_p = st.slider("Top-P (Nucleus Sampling)", 0.0, 1.0, 0.9)
+    freq_penalty = st.slider("Frequency Penalty", -2.0, 2.0, 0.0)
 
-uploaded_file = st.file_uploader("Upload a CSV file for training (Optional for LLM)")
+uploaded_file = st.file_uploader("📂 Upload a CSV file for training (Optional for LLM)")
 
-if st.button("Create and Train Model"):
-    # Initialize Agentic Model
+if st.button("🚀 Create and Train Model"):
     agent = AgenticModel(model_type=model_type, llm_type=llm_type, agentic_mode=agentic_mode)
     agent.create_model()
 
-    # ✅ LLM Prompt Handling
     if model_type == "LLM" and prompt_text:
         response = agent.run_llm_prompt(prompt_text, temperature, max_tokens, top_p, freq_penalty)
-        st.write("LLM Response:", response)
+        st.write("✅ LLM Response:", response)
     
-    # ✅ Non-LLM Models (CSV Required)
     elif uploaded_file:
         data = pd.read_csv(uploaded_file)
-        st.write("Uploaded Data Sample:", data.head())
-
-        target_column = st.selectbox("Select Target Column:", data.columns)
+        st.write("📊 Uploaded Data Sample:", data.head())
+        target_column = st.selectbox("Select Target Column (Label):", data.columns)
         X = data.drop(columns=[target_column])
         y = data[target_column]
         X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
