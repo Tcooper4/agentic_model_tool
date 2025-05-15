@@ -21,3 +21,4 @@ prophet
 tensorflow
 plotly
 shap
+streamlit_autorefresh
