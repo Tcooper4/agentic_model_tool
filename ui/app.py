@@ -80,10 +80,29 @@ def smart_data_sourcing(prompt):
 data = smart_data_sourcing(prompt)
 
 # Automated Data Cleaning
-def clean_data(df):
-    df = df.dropna()
-    df = df.select_dtypes(include=[np.number])
-    return df
+# Clean Data Function with Type Checking
+def clean_data(data):
+    if not isinstance(data, pd.DataFrame):
+        data = pd.DataFrame(data)
+    
+    # Dropping NaNs and converting to numeric (for y)
+    data = data.dropna()
+    data = data.apply(pd.to_numeric, errors='coerce').fillna(0)
+    
+    return data
+
+# Example Usage:
+X = np.array([[1, 2, np.nan], [4, 5, 6], [7, 8, 9]])
+y = np.array([1, 2, np.nan])
+
+# Ensure X and y are properly cleaned
+X_cleaned = clean_data(X)
+y_cleaned = clean_data(pd.DataFrame(y))
+
+print("✅ Cleaned Data (X):")
+print(X_cleaned)
+print("\n✅ Cleaned Data (y):")
+print(y_cleaned)
 
 # Model Explainability with SHAP
 def model_explainability(model, X):
