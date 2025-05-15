@@ -16,3 +16,4 @@ pygments
 yfinance
 matplotlib
 statsmodels
+fpdf2
