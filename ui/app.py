@@ -1,39 +1,23 @@
 import subprocess
 import sys
 import streamlit as st
+import pandas as pd
+import openai
+from transformers import AutoModelForSequenceClassification, AutoTokenizer
 
-# ✅ Auto-Detecting and Installing Dependencies (Auto-Healing for Python 3.12)
-def ensure_dependencies():
+# ✅ Auto-Detecting and Installing Compatible Torch Version (for Python 3.12)
+def ensure_torch():
     try:
-        # Ensure PIP is up-to-date
-        subprocess.run([sys.executable, "-m", "pip", "install", "--upgrade", "pip"], check=True)
-        st.write("✅ PIP upgraded.")
+        import torch
+        st.write(f"Torch version {torch.__version__} is already installed.")
+    except ImportError:
+        st.warning("Torch not detected. Auto-installing the correct version for CPU...")
+        subprocess.run([sys.executable, "-m", "pip", "install", "torch==2.0.1", "--index-url", "https://download.pytorch.org/whl/cpu"], check=True)
+        import torch
+        st.success(f"Torch version {torch.__version__} installed successfully.")
 
-        # Install Cython (compatible version)
-        subprocess.run([sys.executable, "-m", "pip", "install", "--upgrade", "Cython==0.29.36"], check=True)
-        st.write("✅ Cython installed.")
-
-        # Install a precompiled version of Scikit-Learn (avoids compilation errors)
-        subprocess.run([sys.executable, "-m", "pip", "install", "--upgrade", 
-                        "scikit-learn", "--only-binary=:all:", "--no-cache-dir"], check=True)
-        st.write("✅ Scikit-Learn installed without compilation errors.")
-
-        # Install a compatible version of Torch for Python 3.12
-        subprocess.run([sys.executable, "-m", "pip", "install", "torch", "--index-url", "https://download.pytorch.org/whl/nightly/cpu"], check=True)
-        st.write("✅ Torch (CPU) installed for Python 3.12.")
-
-        # Install other dependencies (Hugging Face, OpenAI, Pandas)
-        subprocess.run([sys.executable, "-m", "pip", "install", "--upgrade", 
-                        "transformers", "openai",
-                        "pandas", "numpy", "PyYAML", "tqdm", 
-                        "markdown-it-py", "mdurl", "rich", "pygments"], check=True)
-        st.write("✅ All other dependencies installed.")
-        
-    except subprocess.CalledProcessError as e:
-        st.error(f"Error during dependency installation: {e}")
-
-# ✅ Automatically Ensure Dependencies are Installed
-ensure_dependencies()
+# ✅ Ensure Torch is installed
+ensure_torch()
 
 # ✅ Standard App Code Below (LLM Model Creation Tool)
 st.title("Autonomous Agentic Model Creation Tool (Secure LLM Choice)")
@@ -42,7 +26,7 @@ st.sidebar.header("Model Configuration")
 model_type = st.sidebar.selectbox("Choose Model Type", ["LogisticRegression", "RandomForest", "XGBoost", "LLM"])
 llm_type = st.sidebar.selectbox("LLM Type", ["Hugging Face (Free)", "OpenAI (GPT-4)"])
 
-# Secure API Key Input (Only stored in session)
+# ✅ Secure API Key Input (Only stored in session)
 if llm_type == "OpenAI (GPT-4)":
     openai_api_key = st.sidebar.text_input("Enter Your OpenAI API Key (Secure)", type="password")
     if openai_api_key:
@@ -55,14 +39,12 @@ if st.button("Create and Train Model"):
     model = None
     if model_type == "LLM":
         if llm_type == "Hugging Face (Free)":
-            from transformers import AutoModelForSequenceClassification, AutoTokenizer
             model_name = "distilbert-base-uncased"
             tokenizer = AutoTokenizer.from_pretrained(model_name)
             model = AutoModelForSequenceClassification.from_pretrained(model_name)
             st.success(f"LLM Model (Hugging Face - {model_name}) created successfully.")
         
         elif llm_type == "OpenAI (GPT-4)" and "openai_api_key" in st.session_state:
-            import openai
             openai.api_key = st.session_state["openai_api_key"]
             st.success("LLM Model (OpenAI GPT-4) configured. Ready for classification or generation.")
         
@@ -90,6 +72,29 @@ if st.button("Create and Train Model"):
                     )
                     predictions.append(response.choices[0].text.strip())
 
+            elif llm_type == "Hugging Face (Free)":
+                st.write("Hugging Face model loaded. Fine-tuning skipped for simplicity.")
+                # You can add classification logic here if needed
+
             data['Predictions'] = predictions
-            st.write("Classification Results:", data[['text', 'Predictions']])
+            st.write("Classification Results:", data[[text_column, 'Predictions']])
             st.download_button("Download Predictions", data.to_csv(index=False), "predictions.csv")
+
+        elif task_type == "generation":
+            texts = data[text_column].astype(str).tolist()
+            outputs = []
+
+            if llm_type == "OpenAI (GPT-4)" and "openai_api_key" in st.session_state:
+                for text in texts:
+                    response = openai.Completion.create(
+                        engine="gpt-4",
+                        prompt=f"Generate text based on: {text}",
+                        max_tokens=100,
+                        n=1,
+                        temperature=0.7
+                    )
+                    outputs.append(response.choices[0].text.strip())
+
+            data['Generated Text'] = outputs
+            st.write("Generated Text Results:", data[[text_column, 'Generated Text']])
+            st.download_button("Download Generated Text", data.to_csv(index=False), "generated_text.csv")
