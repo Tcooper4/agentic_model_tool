@@ -1,11 +1,19 @@
 
-# Agentic Model Creation Tool
+# Agentic Model Creation Tool (Enhanced with UI)
 
-This tool allows you to dynamically generate, customize, and fine-tune machine learning models.
-It is designed to be linked with multiple projects, providing a robust and versatile model generation system.
+This tool provides an intuitive interface to dynamically create, train, and test machine learning models.
+
+## How to Use
+1. Run the Streamlit UI:
+   ```bash
+   streamlit run ui/app.py
+   ```
+
+2. Use the sidebar to configure the model.
+3. Save and train the model without touching the code.
+4. Test the model by uploading a CSV file.
 
 ## Features
-- Dynamic model creation (Linear Models, XGBoost, LSTM, Transformers)
-- Hyperparameter optimization with Optuna
-- Configurable via YAML/JSON files
-- Easily linkable with other GitHub projects
+- Intuitive UI for model creation and training.
+- Supports XGBoost, LSTM, Linear Regression, and Transformer models.
+- Save and reload configurations.
