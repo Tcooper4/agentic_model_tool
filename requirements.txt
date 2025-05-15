@@ -18,3 +18,4 @@ matplotlib
 statsmodels
 fpdf2
 prophet
+tensorflow
