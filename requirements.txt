@@ -17,3 +17,4 @@ yfinance
 matplotlib
 statsmodels
 fpdf2
+prophet
