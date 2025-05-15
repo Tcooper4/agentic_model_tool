@@ -1,7 +1,9 @@
 
 import streamlit as st
 import openai
-from transformers import AutoModelForSequenceClassification, AutoTokenizer
+import pandas as pd
+import os
+from transformers import AutoModelForSequenceClassification, AutoTokenizer, AutoModel
 
 st.title("Autonomous Agentic Model Creation Tool (Secure LLM Choice)")
 
@@ -15,10 +17,12 @@ if llm_type == "OpenAI (GPT-4)":
     if openai_api_key:
         st.session_state["openai_api_key"] = openai_api_key
 
-task_type = st.sidebar.selectbox("Task Type", ["classification", "regression"])
+task_type = st.sidebar.selectbox("Task Type", ["classification", "generation"])
 uploaded_file = st.file_uploader("Upload a CSV file for training")
 
 if st.button("Create and Train Model"):
+    model = None
+
     if model_type == "LLM":
         if llm_type == "Hugging Face (Free)":
             model_name = "distilbert-base-uncased"
@@ -28,33 +32,66 @@ if st.button("Create and Train Model"):
         
         elif llm_type == "OpenAI (GPT-4)" and "openai_api_key" in st.session_state:
             openai.api_key = st.session_state["openai_api_key"]
-            st.success("LLM Model (OpenAI GPT-4) configured. Ready to classify or generate text.")
+            st.success("LLM Model (OpenAI GPT-4) configured. Ready for classification or generation.")
         
         else:
             st.error("Please enter your OpenAI API Key for GPT-4.")
 
-    if uploaded_file:
-        import pandas as pd
+    if model and uploaded_file:
         data = pd.read_csv(uploaded_file)
-        X = data.drop(columns="target")
-        y = data["target"]
+        st.write("Uploaded Data Sample:", data.head())
         
-        if model_type == "LLM" and llm_type == "OpenAI (GPT-4)" and "openai_api_key" in st.session_state:
-            st.write("Sending text samples to GPT-4 for classification...")
+        text_column = st.selectbox("Select the Text Column for LLM:", data.columns)
+        
+        if task_type == "classification":
+            texts = data[text_column].astype(str).tolist()
             predictions = []
-            for text in X.iloc[:, 0]:  # Assuming first column is text data
-                response = openai.Completion.create(
-                    engine="gpt-4",
-                    prompt=f"Classify the following text: {text}",
-                    max_tokens=50,
-                    n=1,
-                    temperature=0.7
-                )
-                predictions.append(response.choices[0].text.strip())
 
-            st.write("Classification Results:", predictions)
-        elif model_type == "LLM" and llm_type == "Hugging Face (Free)"):
-            st.write("Hugging Face LLM is loaded. Fine-tuning skipped for simplicity.")
+            if llm_type == "OpenAI (GPT-4)" and "openai_api_key" in st.session_state:
+                for text in texts:
+                    response = openai.Completion.create(
+                        engine="gpt-4",
+                        prompt=f"Classify the following text: {text}",
+                        max_tokens=50,
+                        n=1,
+                        temperature=0.7
+                    )
+                    predictions.append(response.choices[0].text.strip())
 
-        else:
-            st.write("Model training is only available for non-LLM models here.")
+            elif llm_type == "Hugging Face (Free)":
+                st.write("Hugging Face model loaded. Predictions can be added here.")
+
+            data['Predictions'] = predictions
+            st.write("Classification Results:", data[['text', 'Predictions']])
+            st.download_button("Download Predictions", data.to_csv(index=False), "predictions.csv")
+
+        elif task_type == "generation":
+            texts = data[text_column].astype(str).tolist()
+            generations = []
+
+            if llm_type == "OpenAI (GPT-4)" and "openai_api_key" in st.session_state:
+                for text in texts:
+                    response = openai.Completion.create(
+                        engine="gpt-4",
+                        prompt=text,
+                        max_tokens=150,
+                        n=1,
+                        temperature=0.7
+                    )
+                    generations.append(response.choices[0].text.strip())
+
+            data['Generated Text'] = generations
+            st.write("Generated Text Results:", data[['text', 'Generated Text']])
+            st.download_button("Download Generated Text", data.to_csv(index=False), "generated_text.csv")
+
+        # Save Model Option
+        if model_type == "LLM" and llm_type == "Hugging Face (Free)":
+            if st.button("Save Model"):
+                model_dir = "saved_models/huggingface_model"
+                os.makedirs(model_dir, exist_ok=True)
+                model.save_pretrained(model_dir)
+                tokenizer.save_pretrained(model_dir)
+                st.success(f"Model saved to {model_dir}")
+
+        elif model_type == "LLM" and llm_type == "OpenAI (GPT-4)":
+            st.warning("OpenAI GPT-4 model cannot be saved locally (API-based).")
