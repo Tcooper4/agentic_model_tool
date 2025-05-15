@@ -5,7 +5,19 @@ import pandas as pd
 import openai
 from transformers import AutoModelForSequenceClassification, AutoTokenizer
 
-# ✅ Auto-Detecting and Installing Compatible Torch Version (for Python 3.12)
+# ✅ Auto-Healing for Distutils
+def ensure_distutils():
+    try:
+        import distutils
+        st.write("✅ Distutils is already installed.")
+    except ImportError:
+        st.warning("Distutils not detected. Auto-installing...")
+        subprocess.run([sys.executable, "-m", "pip", "install", "--upgrade", "setuptools"], check=True)
+        st.success("✅ Distutils installed successfully.")
+
+ensure_distutils()
+
+# ✅ Auto-Healing for Torch
 def ensure_torch():
     try:
         import torch
@@ -20,7 +32,6 @@ def ensure_torch():
         import torch
         st.success(f"Torch version {torch.__version__} installed successfully.")
 
-# ✅ Ensure Torch is installed
 ensure_torch()
 
 # ✅ Standard App Code Below (LLM Model Creation Tool)
@@ -76,29 +87,6 @@ if st.button("Create and Train Model"):
                     )
                     predictions.append(response.choices[0].text.strip())
 
-            elif llm_type == "Hugging Face (Free)":
-                st.write("Hugging Face model loaded. Fine-tuning skipped for simplicity.")
-                # Optionally, you can add your Hugging Face classification logic here
-
             data['Predictions'] = predictions
             st.write("Classification Results:", data[[text_column, 'Predictions']])
             st.download_button("Download Predictions", data.to_csv(index=False), "predictions.csv")
-
-        elif task_type == "generation":
-            texts = data[text_column].astype(str).tolist()
-            generated_texts = []
-
-            if llm_type == "OpenAI (GPT-4)" and "openai_api_key" in st.session_state:
-                for text in texts:
-                    response = openai.Completion.create(
-                        engine="gpt-4",
-                        prompt=f"Generate text based on: {text}",
-                        max_tokens=100,
-                        n=1,
-                        temperature=0.7
-                    )
-                    generated_texts.append(response.choices[0].text.strip())
-
-            data['Generated Text'] = generated_texts
-            st.write("Generated Text Results:", data[[text_column, 'Generated Text']])
-            st.download_button("Download Generated Text", data.to_csv(index=False), "generated_text.csv")
