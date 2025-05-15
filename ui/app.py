@@ -14,7 +14,7 @@ import openai
 from transformers import AutoTokenizer, AutoModelForSequenceClassification
 import requests
 
-st.title("🚀 Agentic Model Creation Tool (Fully Automated with Intelligent Data Sourcing)")
+st.title("🚀 Agentic Model Creation Tool (Fully Automated)")
 st.sidebar.header("Configuration")
 
 # LLM Configuration (Choose between Hugging Face or OpenAI)
@@ -30,40 +30,41 @@ if llm_type == "OpenAI (GPT-4)":
 # Prompt for User Request
 prompt = st.text_input("Enter Your Request or Prompt (e.g., 'Predict SP500', 'Classify Emails')")
 
-# Intelligent Data Sourcing
-def intelligent_data_sourcing(prompt):
-    if "SP500" in prompt or "stock" in prompt or "ticker" in prompt:
-        ticker = st.text_input("Enter Stock Ticker (e.g., AAPL, MSFT)", value="SPY")
-        if ticker:
+# Smart Data Sourcing with Auto-Correction and Suggestions
+def smart_data_sourcing(prompt):
+    prompt = prompt.lower()
+    
+    if "sp500" in prompt or "stock" in prompt or "ticker" in prompt:
+        ticker = "SPY"
+        try:
             data = yf.download(ticker, period="1y")
-            st.write("✅ Stock Data (Yahoo Finance) Sourced")
-            return data.reset_index()
+            if not data.empty:
+                st.write(f"✅ Stock Data for {ticker} (Yahoo Finance) Sourced")
+                return data.reset_index()
+        except Exception as e:
+            st.error(f"❌ Error fetching stock data: {str(e)}")
     
     elif "crypto" in prompt or "bitcoin" in prompt or "ethereum" in prompt:
-        crypto = st.text_input("Enter Cryptocurrency (e.g., bitcoin, ethereum)", value="bitcoin")
-        if crypto:
+        crypto = "bitcoin"
+        try:
             url = f"https://api.coingecko.com/api/v3/coins/{crypto}/market_chart?vs_currency=usd&days=365"
             response = requests.get(url).json()
-            prices = response['prices']
-            data = pd.DataFrame(prices, columns=["timestamp", "price"]).set_index("timestamp")
-            st.write("✅ Cryptocurrency Data (CoinGecko API) Sourced")
-            return data
+            prices = response.get('prices', [])
+            if prices:
+                data = pd.DataFrame(prices, columns=["timestamp", "price"]).set_index("timestamp")
+                st.write("✅ Cryptocurrency Data (CoinGecko API) Sourced")
+                return data
+        except Exception as e:
+            st.error(f"❌ Error fetching crypto data: {str(e)}")
     
-    elif "GDP" in prompt or "CPI" in prompt or "unemployment" in prompt:
-        indicator = st.text_input("Enter FRED Indicator (e.g., GDP, CPI)", value="GDP")
-        if indicator:
-            url = f"https://api.stlouisfed.org/fred/series/observations?series_id={indicator}&api_key=YOUR_FRED_API_KEY&file_type=json"
-            response = requests.get(url).json()
-            observations = response['observations']
-            data = pd.DataFrame(observations)
-            st.write("✅ Economic Data (FRED API) Sourced")
-            return data
+    elif "gdp" in prompt or "cpi" in prompt or "unemployment" in prompt:
+        st.error("❌ Economic data (FRED) is currently not supported automatically.")
     
-    st.error("❌ Unable to detect appropriate data source. Please upload a CSV.")
+    st.error("❌ Unable to detect appropriate data source. Please enter a valid request.")
     return None
 
 # Auto-detect data based on prompt
-data = intelligent_data_sourcing(prompt)
+data = smart_data_sourcing(prompt)
 
 if data is not None and not data.empty:
     st.write("✅ Data Ready")
@@ -71,13 +72,44 @@ if data is not None and not data.empty:
     y = data.iloc[:, -1]
     X = data.iloc[:, :-1]
 
-    # Automatically choose model based on target type
-    model = XGBClassifier() if y.nunique() <= 20 else XGBRegressor()
-    model.fit(X, y)
-    st.write("✅ Model Trained Automatically")
-    st.write("### Model Performance")
-    predictions = model.predict(X)
-    st.write(f"🔍 Accuracy: {accuracy_score(y, predictions)}") if y.nunique() <= 20 else st.write(f"🔍 Mean Squared Error: {mean_squared_error(y, predictions)}")
+    # Auto-detect task type and model selection
+    if y.nunique() <= 20:
+        model = XGBClassifier()
+        task_type = "Classification"
+    else:
+        model = XGBRegressor()
+        task_type = "Regression"
+    
+    st.write(f"🚀 Auto-detected task: {task_type}")
 
+    # Auto-optimize model using Optuna
+    def objective(trial):
+        if task_type == "Classification":
+            model.n_estimators = trial.suggest_int("n_estimators", 50, 500)
+            model.max_depth = trial.suggest_int("max_depth", 2, 10)
+            model.learning_rate = trial.suggest_float("learning_rate", 0.01, 0.3)
+        else:
+            model.n_estimators = trial.suggest_int("n_estimators", 50, 500)
+            model.max_depth = trial.suggest_int("max_depth", 2, 10)
+            model.learning_rate = trial.suggest_float("learning_rate", 0.01, 0.3)
+        
+        model.fit(X, y)
+        preds = model.predict(X)
+        if task_type == "Classification":
+            return 1 - accuracy_score(y, preds)
+        else:
+            return mean_squared_error(y, preds)
+    
+    st.write("🚀 Auto-Optimizing Model...")
+    study = optuna.create_study(direction="minimize")
+    study.optimize(objective, n_trials=10)
+    st.write("✅ Model Optimized Automatically")
+
+    # Display Results
+    preds = model.predict(X)
+    if task_type == "Classification":
+        st.write(f"🔍 Accuracy: {accuracy_score(y, preds)}")
+    else:
+        st.write(f"🔍 Mean Squared Error: {mean_squared_error(y, preds)}")
 else:
     st.error("❌ No Data Available. Please enter a prompt or upload a file.")
