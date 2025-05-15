@@ -5,6 +5,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import accuracy_score, mean_squared_error
+from sklearn.preprocessing import LabelEncoder, StandardScaler
 from sklearn.linear_model import LogisticRegression
 from sklearn.ensemble import RandomForestClassifier
 from xgboost import XGBClassifier, XGBRegressor
@@ -14,7 +15,7 @@ import openai
 from transformers import AutoTokenizer, AutoModelForSequenceClassification
 import requests
 
-st.title("🚀 Agentic Model Creation Tool (Fully Automated)")
+st.title("🚀 Agentic Model Creation Tool (Fully Automated with Error Handling)")
 st.sidebar.header("Configuration")
 
 # LLM Configuration (Choose between Hugging Face or OpenAI)
@@ -57,9 +58,6 @@ def smart_data_sourcing(prompt):
         except Exception as e:
             st.error(f"❌ Error fetching crypto data: {str(e)}")
     
-    elif "gdp" in prompt or "cpi" in prompt or "unemployment" in prompt:
-        st.error("❌ Economic data (FRED) is currently not supported automatically.")
-    
     st.error("❌ Unable to detect appropriate data source. Please enter a valid request.")
     return None
 
@@ -69,11 +67,23 @@ data = smart_data_sourcing(prompt)
 if data is not None and not data.empty:
     st.write("✅ Data Ready")
     
-    y = data.iloc[:, -1]
-    X = data.iloc[:, :-1]
+    y = data.iloc[:, -1].values
+    X = data.iloc[:, :-1].values
+
+    # Data Preprocessing (Ensures Numeric Only)
+    def preprocess_data(X, y):
+        X = pd.DataFrame(X).apply(pd.to_numeric, errors='coerce').fillna(0)
+        if len(set(y)) > 20:  # Regression
+            y = pd.to_numeric(y, errors='coerce').fillna(0)
+        else:  # Classification
+            le = LabelEncoder()
+            y = le.fit_transform(y)
+        return X, y
+
+    X, y = preprocess_data(X, y)
 
     # Auto-detect task type and model selection
-    if y.nunique() <= 20:
+    if len(set(y)) <= 20:
         model = XGBClassifier()
         task_type = "Classification"
     else:
@@ -82,24 +92,28 @@ if data is not None and not data.empty:
     
     st.write(f"🚀 Auto-detected task: {task_type}")
 
-    # Auto-optimize model using Optuna
+    # Auto-optimize model using Optuna with error handling
     def objective(trial):
-        if task_type == "Classification":
-            model.n_estimators = trial.suggest_int("n_estimators", 50, 500)
-            model.max_depth = trial.suggest_int("max_depth", 2, 10)
-            model.learning_rate = trial.suggest_float("learning_rate", 0.01, 0.3)
-        else:
-            model.n_estimators = trial.suggest_int("n_estimators", 50, 500)
-            model.max_depth = trial.suggest_int("max_depth", 2, 10)
-            model.learning_rate = trial.suggest_float("learning_rate", 0.01, 0.3)
-        
-        model.fit(X, y)
-        preds = model.predict(X)
-        if task_type == "Classification":
-            return 1 - accuracy_score(y, preds)
-        else:
-            return mean_squared_error(y, preds)
-    
+        try:
+            if task_type == "Classification":
+                model.n_estimators = trial.suggest_int("n_estimators", 50, 500)
+                model.max_depth = trial.suggest_int("max_depth", 2, 10)
+                model.learning_rate = trial.suggest_float("learning_rate", 0.01, 0.3)
+            else:
+                model.n_estimators = trial.suggest_int("n_estimators", 50, 500)
+                model.max_depth = trial.suggest_int("max_depth", 2, 10)
+                model.learning_rate = trial.suggest_float("learning_rate", 0.01, 0.3)
+            
+            model.fit(X, y)
+            preds = model.predict(X)
+            if task_type == "Classification":
+                return 1 - accuracy_score(y, preds)
+            else:
+                return mean_squared_error(y, preds)
+        except Exception as e:
+            st.error(f"❌ Optimization Error: {str(e)}")
+            return float("inf")
+
     st.write("🚀 Auto-Optimizing Model...")
     study = optuna.create_study(direction="minimize")
     study.optimize(objective, n_trials=10)
