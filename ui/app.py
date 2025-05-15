@@ -1,9 +1,8 @@
 import pandas as pd
 import numpy as np
 import streamlit as st
-from datetime import datetime
+from datetime import datetime, timedelta
 from statsmodels.tsa.arima.model import ARIMA
-from sklearn.model_selection import train_test_split
 from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score
 from sklearn.preprocessing import MinMaxScaler
 from keras.models import Sequential
@@ -14,14 +13,19 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 import requests
 import openai
+import optuna
+import threading
+import time
 
-st.set_page_config(page_title="🚀 Agentic Model Creation Tool (Fully Automated)", layout="wide")
-st.title("🚀 Agentic Model Creation Tool (Fully Automated with GPT-4)")
+st.set_page_config(page_title="🚀 Advanced Agentic Model Creation Tool", layout="wide")
+st.title("🚀 Advanced Agentic Model Creation Tool (Fully Automated with Hybrid Model)")
 
 # Sidebar Configuration
 st.sidebar.header("🔧 Configuration")
-prompt = st.sidebar.text_input("Enter Your Request or Prompt (e.g., 'Predict SP500', 'Predict AAPL', 'Classify Emails')", "")
+prompt = st.sidebar.text_input("Enter Your Request or Prompt (e.g., 'Predict SP500')", "")
 forecast_period = st.sidebar.number_input("Forecast Period (Days)", min_value=1, max_value=365, value=7)
+auto_mode = st.sidebar.checkbox("🌐 Fully Automated Mode", value=True)
+auto_update = st.sidebar.checkbox("🔁 Enable Auto-Update (Every 24 hours)", value=False)
 
 # Choose LLM (Hugging Face or OpenAI)
 llm_type = st.sidebar.selectbox("🔑 Choose LLM", ["Hugging Face (Free)", "OpenAI (GPT-4)"])
@@ -31,126 +35,132 @@ if llm_type == "OpenAI (GPT-4)":
         openai.api_key = openai_api_key
         st.sidebar.write("💡 Estimated Cost: ~$0.03 per 1,000 tokens")
 
-# Enhanced Smart Data Sourcing with Error Handling
+# Auto Data Sourcing Based on Prompt
 def smart_data_sourcing(prompt):
     prompt = prompt.lower()
-    
-    # Detect Stock Ticker
-    if "predict" in prompt:
-        words = prompt.split()
-        for word in words:
-            if len(word) <= 5 and word.isalpha():
-                ticker = word.upper()
-                st.write(f"✅ Automatically Fetching Stock Data for {ticker} (Yahoo Finance)")
-                try:
-                    data = yf.download(ticker, period="1y")
-                    data.reset_index(inplace=True)
-                    if not data.empty:
-                        return data
-                except Exception as e:
-                    st.error(f"❌ Error fetching stock data for {ticker}: {str(e)}")
-
-    # Cryptocurrency Data
-    if "crypto" in prompt or "bitcoin" in prompt or "ethereum" in prompt:
-        crypto = "bitcoin" if "bitcoin" in prompt else "ethereum"
-        st.write(f"✅ Automatically Fetching {crypto.capitalize()} Data (CoinGecko)")
-        url = f"https://api.coingecko.com/api/v3/coins/{crypto}/market_chart?vs_currency=usd&days=365"
-        response = requests.get(url).json()
-        prices = response.get('prices', [])
-        if prices:
-            data = pd.DataFrame(prices, columns=["timestamp", "price"])
-            data['timestamp'] = pd.to_datetime(data['timestamp'], unit='ms')
-            return data.rename(columns={"timestamp": "Date", "price": "Close"})
-
+    if "sp500" in prompt or "stock" in prompt or "ticker" in prompt:
+        ticker = prompt.split()[-1] if " " in prompt else "SPY"
+        st.write(f"✅ Automatically Fetching Stock Data for {ticker} (Yahoo Finance)")
+        try:
+            data = yf.download(ticker, period="2y")
+            data.reset_index(inplace=True)
+            return data
+        except Exception as e:
+            st.error(f"❌ Error fetching stock data: {str(e)}")
     st.error("❌ Unable to detect appropriate data source. Please enter a valid request.")
     return None
 
 # Load Data Based on User Prompt
 data = smart_data_sourcing(prompt)
 
+def auto_refresh_forecast():
+    while True:
+        if auto_update:
+            st.experimental_rerun()
+        time.sleep(86400)  # Auto-update every 24 hours
+
+# Start auto-refresh thread if enabled
+if auto_update:
+    threading.Thread(target=auto_refresh_forecast, daemon=True).start()
+
 if data is not None and not data.empty:
     st.write("✅ Data Loaded Automatically")
     st.write(data.head())
 
-    # Ensure the DataFrame has columns
-    if len(data.columns) == 0:
-        st.error("❌ Data has no columns. Please try a different source.")
-    else:
-        # Auto-Detecting Date and Target Columns Safely
-        date_column = st.selectbox("Select Date Column", data.columns, index=0)
-        target_column = st.selectbox("Select Target Column", data.columns, index=len(data.columns) - 1)
+    # Allow user to select target column (Price)
+    target_column = st.selectbox("Select Target Column", data.columns, index=data.columns.get_loc("Close") if "Close" in data.columns else -1)
 
-        if date_column and target_column:
-            data[date_column] = pd.to_datetime(data[date_column], errors='coerce')
-            data.dropna(subset=[date_column, target_column], inplace=True)
-            X = data[[date_column]]
-            y = data[target_column]
+    if target_column:
+        y = data[target_column].values
+        data['Date'] = pd.to_datetime(data['Date'])
+        X = data[['Date']]
 
-            # Model Comparison Function
-            def compare_models(X, y):
-                st.subheader("📊 Comparing Models")
-                results = {}
+        st.subheader("📊 Model Explanations")
+        st.write("""
+        - **ARIMA (Auto Regressive Integrated Moving Average):** Best for time-series data with trends.
+        - **LSTM (Long Short-Term Memory):** A type of recurrent neural network (RNN) suitable for sequential data.
+        - **Prophet:** Developed by Facebook, great for data with clear seasonality.
+        - **Hybrid Model:** Weighted combination of the best models for improved accuracy.
+        """)
 
-                # ARIMA
-                try:
-                    model = ARIMA(y, order=(5, 1, 0))
-                    model_fit = model.fit()
-                    forecast = model_fit.forecast(steps=forecast_period)
-                    mse = mean_squared_error(y[-forecast_period:], forecast)
-                    results['ARIMA'] = mse
-                    st.write(f"🔍 ARIMA MSE: {mse}")
-                except Exception as e:
-                    st.write(f"❌ ARIMA Error: {str(e)}")
+        # Auto-Optimization with Model Selection
+        def auto_optimize(X, y):
+            st.subheader("🔧 Auto-Optimize Model")
+            best_models = []
+            best_mse = float('inf')
 
-                # LSTM
-                try:
-                    scaler = MinMaxScaler()
-                    scaled_y = scaler.fit_transform(np.array(y).reshape(-1, 1))
-                    X_train, y_train = [], []
+            def calculate_confidence(mse):
+                return max(0, 100 - mse * 100)  # Inverse relationship
 
-                    for i in range(60, len(scaled_y)):
-                        X_train.append(scaled_y[i-60:i, 0])
-                        y_train.append(scaled_y[i, 0])
+            def train_arima(y):
+                model = ARIMA(y, order=(5, 1, 0))
+                model_fit = model.fit()
+                forecast = model_fit.forecast(steps=forecast_period)
+                mse = mean_squared_error(y[-forecast_period:], forecast)
+                confidence = calculate_confidence(mse)
+                return model_fit, forecast, mse, confidence
 
-                    X_train, y_train = np.array(X_train), np.array(y_train)
-                    X_train = X_train.reshape(X_train.shape[0], X_train.shape[1], 1)
+            def train_lstm(y):
+                scaler = MinMaxScaler()
+                scaled_y = scaler.fit_transform(y.reshape(-1, 1))
+                X_train, y_train = [], []
 
-                    lstm_model = Sequential()
-                    lstm_model.add(LSTM(50, return_sequences=True, input_shape=(X_train.shape[1], 1)))
-                    lstm_model.add(LSTM(50))
-                    lstm_model.add(Dense(1))
-                    lstm_model.compile(optimizer='adam', loss='mean_squared_error')
-                    lstm_model.fit(X_train, y_train, epochs=5, verbose=0)
+                for i in range(60, len(scaled_y)):
+                    X_train.append(scaled_y[i-60:i, 0])
+                    y_train.append(scaled_y[i, 0])
+                
+                X_train, y_train = np.array(X_train), np.array(y_train)
+                X_train = X_train.reshape((X_train.shape[0], X_train.shape[1], 1))
 
-                    predictions = lstm_model.predict(X_train)
-                    mse = mean_squared_error(y_train, predictions)
-                    results['LSTM'] = mse
-                    st.write(f"🔍 LSTM MSE: {mse}")
-                except Exception as e:
-                    st.write(f"❌ LSTM Error: {str(e)}")
+                model = Sequential()
+                model.add(LSTM(50, return_sequences=True))
+                model.add(LSTM(50))
+                model.add(Dense(1))
+                model.compile(optimizer='adam', loss='mean_squared_error')
+                model.fit(X_train, y_train, epochs=5, batch_size=32, verbose=0)
+                predictions = model.predict(X_train)
+                mse = mean_squared_error(y[-len(predictions):], scaler.inverse_transform(predictions))
+                confidence = calculate_confidence(mse)
+                return model, predictions, mse, confidence
 
-                # Prophet
-                try:
-                    prophet_df = pd.DataFrame({'ds': data[date_column], 'y': y})
-                    prophet_model = Prophet()
-                    prophet_model.fit(prophet_df)
-                    future = prophet_model.make_future_dataframe(periods=forecast_period)
-                    forecast = prophet_model.predict(future)
-                    mse = mean_squared_error(y[-forecast_period:], forecast['yhat'][-forecast_period:])
-                    results['Prophet'] = mse
-                    st.write(f"🔍 Prophet MSE: {mse}")
-                except Exception as e:
-                    st.write(f"❌ Prophet Error: {str(e)}")
+            def train_prophet(X, y):
+                prophet_df = pd.DataFrame({'ds': X['Date'], 'y': y})
+                model = Prophet()
+                model.fit(prophet_df)
+                future = model.make_future_dataframe(periods=forecast_period)
+                forecast = model.predict(future)
+                mse = mean_squared_error(y[-forecast_period:], forecast['yhat'][-forecast_period:])
+                confidence = calculate_confidence(mse)
+                return model, forecast['yhat'], mse, confidence
 
-                return results
+            for model_type in ["ARIMA", "LSTM", "Prophet"]:
+                if model_type == "ARIMA":
+                    model, forecast, mse, confidence = train_arima(y)
+                elif model_type == "LSTM":
+                    model, forecast, mse, confidence = train_lstm(y)
+                else:
+                    model, forecast, mse, confidence = train_prophet(X, y)
 
-            # Automatically Compare Models
-            model_results = compare_models(X, y)
-            if model_results:
-                best_model = min(model_results, key=model_results.get)
-                st.write(f"✅ Best Model: **{best_model}** with MSE: {model_results[best_model]}")
-            else:
-                st.error("❌ No models successfully trained.")
+                st.write(f"🔍 {model_type} MSE: {mse:.4f}, Confidence: {confidence:.2f}%")
+                best_models.append((model_type, forecast, mse, confidence))
+
+            return best_models
+
+        # Auto-Optimize and Select Best Model
+        best_models = auto_optimize(X, y)
+        st.subheader("✅ Best Model Comparison with Hybrid Model")
+        
+        hybrid_forecast = np.zeros(forecast_period)
+        total_weight = 0
+        for model_name, forecast, mse, confidence in best_models:
+            weight = 1 / mse if mse > 0 else 1
+            hybrid_forecast += np.array(forecast[:forecast_period]) * weight
+            total_weight += weight
+            st.write(f"🔍 {model_name}: MSE: {mse:.4f}, Confidence: {confidence:.2f}%")
+
+        hybrid_forecast /= total_weight
+        st.write("### 🚀 Hybrid Model Forecast (Weighted Average)")
+        st.line_chart(hybrid_forecast)
 
 else:
     st.error("❌ No Data Available. Please enter a prompt or upload a file.")
