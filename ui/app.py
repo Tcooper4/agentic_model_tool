@@ -41,39 +41,55 @@ class AgenticModel:
         st.success(f"✅ {self.model_type} model created.")
 
     def train_and_optimize(self, X_train, y_train):
-        X_train = pd.DataFrame(X_train)
-        y_train = pd.Series(y_train)
+        try:
+            # ✅ Ensure X_train is a DataFrame and y_train is a Series
+            X_train = pd.DataFrame(X_train)
+            y_train = pd.Series(y_train)
 
-        # ✅ Convert Categorical Data to Numerical (if any)
-        X_train = pd.get_dummies(X_train, drop_first=True)
-        X_train.fillna(0, inplace=True)
-        y_train.fillna(0, inplace=True)
+            # ✅ Convert Categorical Data to Numerical (if any)
+            X_train = pd.get_dummies(X_train, drop_first=True)
 
-        if self.agentic_mode:
-            def objective(trial):
-                if self.model_type == "LogisticRegression":
-                    self.model = LogisticRegression(C=trial.suggest_loguniform("C", 0.01, 10))
-                elif self.model_type == "RandomForest":
-                    self.model = RandomForestClassifier(
-                        n_estimators=trial.suggest_int("n_estimators", 10, 200)
-                    )
-                elif self.model_type == "XGBoost":
-                    self.model = XGBClassifier(
-                        n_estimators=trial.suggest_int("n_estimators", 10, 200),
-                        max_depth=trial.suggest_int("max_depth", 3, 10),
-                    )
+            # ✅ Handle Missing Values
+            X_train.fillna(0, inplace=True)
+            y_train.fillna(0, inplace=True)
+
+            # ✅ Ensure all data is numeric
+            X_train = X_train.apply(pd.to_numeric, errors='coerce').fillna(0)
+            y_train = pd.to_numeric(y_train, errors='coerce').fillna(0)
+
+            if self.agentic_mode:
+                def objective(trial):
+                    if self.model_type == "LogisticRegression":
+                        self.model = LogisticRegression(C=trial.suggest_loguniform("C", 0.01, 10))
+                    elif self.model_type == "RandomForest":
+                        self.model = RandomForestClassifier(
+                            n_estimators=trial.suggest_int("n_estimators", 10, 200)
+                        )
+                    elif self.model_type == "XGBoost":
+                        self.model = XGBClassifier(
+                            n_estimators=trial.suggest_int("n_estimators", 10, 200),
+                            max_depth=trial.suggest_int("max_depth", 3, 10),
+                        )
+                    self.model.fit(X_train, y_train)
+                    predictions = self.model.predict(X_train)
+                    return accuracy_score(y_train, predictions)
+                
+                st.write("🚀 Optimizing model with Optuna (Auto-Optimization)...")
+                study = optuna.create_study(direction="maximize")
+                study.optimize(objective, n_trials=10)
+                self.best_params = study.best_params
+                st.success(f"✅ Optimization complete. Best parameters: {self.best_params}")
+                self.model.set_params(**self.best_params)
+            else:
                 self.model.fit(X_train, y_train)
-                predictions = self.model.predict(X_train)
-                return accuracy_score(y_train, predictions)
-            
-            st.write("🚀 Optimizing model with Optuna (Auto-Optimization)...")
-            study = optuna.create_study(direction="maximize")
-            study.optimize(objective, n_trials=10)
-            self.best_params = study.best_params
-            st.success(f"✅ Optimization complete. Best parameters: {self.best_params}")
-            self.model.set_params(**self.best_params)
-        else:
-            self.model.fit(X_train, y_train)
+
+        except ValueError as ve:
+            st.error(f"❌ XGBoost encountered an error: {str(ve)}")
+            st.error("⚠️ This is often caused by non-numerical data or missing values. Please check your data.")
+
+        except Exception as e:
+            st.error(f"❌ An unexpected error occurred: {str(e)}")
+
 
     def evaluate_model(self, X_test, y_test):
         predictions = self.model.predict(X_test)
