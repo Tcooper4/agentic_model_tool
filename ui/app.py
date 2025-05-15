@@ -1,27 +1,18 @@
-import subprocess
-import sys
 import streamlit as st
 import pandas as pd
 import openai
 from transformers import AutoModelForSequenceClassification, AutoTokenizer
 
-# ✅ Self-Healing Function for Dependencies (Full Auto-Compatibility)
-def auto_install_dependencies():
+# ✅ Check Torch and Install if Missing (Without Forced Installation)
+def ensure_torch():
     try:
-        # Auto-Install Missing Dependencies (without upgrading PIP)
-        subprocess.run([sys.executable, "-m", "pip", "install", "--no-cache-dir", 
-                        "setuptools", "wheel", "Cython"], check=True)
-        subprocess.run([sys.executable, "-m", "pip", "install", "--no-cache-dir",
-                        "scikit-learn", "torch", "transformers", "openai", 
-                        "pandas", "numpy", "PyYAML", "tqdm", 
-                        "markdown-it-py", "mdurl", "rich", "pygments"], check=True)
-        st.success("✅ Dependencies installed successfully.")
+        import torch
+        st.write(f"✅ Torch version {torch.__version__} is already installed.")
+    except ImportError:
+        st.warning("❌ Torch is missing. Please install it using a compatible version.")
 
-    except subprocess.CalledProcessError as e:
-        st.error(f"❌ Error during dependency installation: {str(e)}")
-
-# ✅ Ensure All Dependencies are Installed
-auto_install_dependencies()
+# ✅ Ensure Torch is detected
+ensure_torch()
 
 # ✅ Standard App Code Below (LLM Model Creation Tool)
 st.title("Autonomous Agentic Model Creation Tool (Secure LLM Choice)")
