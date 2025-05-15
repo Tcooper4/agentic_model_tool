@@ -5,34 +5,25 @@ import pandas as pd
 import openai
 from transformers import AutoModelForSequenceClassification, AutoTokenizer
 
-# ✅ Auto-Healing for Distutils
-def ensure_distutils():
+# ✅ Self-Healing Function for Dependencies (Full Auto-Compatibility)
+def auto_install_dependencies():
     try:
-        import distutils
-        st.write("✅ Distutils is already installed.")
-    except ImportError:
-        st.warning("Distutils not detected. Auto-installing...")
-        subprocess.run([sys.executable, "-m", "pip", "install", "--upgrade", "setuptools"], check=True)
-        st.success("✅ Distutils installed successfully.")
+        # Upgrade PIP
+        subprocess.run([sys.executable, "-m", "pip", "install", "--upgrade", "pip"], check=True)
 
-ensure_distutils()
+        # Auto-Install Missing Dependencies
+        subprocess.run([sys.executable, "-m", "pip", "install", "--upgrade", 
+                        "setuptools", "wheel", "Cython"], check=True)
+        subprocess.run([sys.executable, "-m", "pip", "install", "scikit-learn", "torch", 
+                        "transformers", "openai", "pandas", "numpy", "PyYAML", 
+                        "tqdm", "markdown-it-py", "mdurl", "rich", "pygments"], check=True)
+        st.success("✅ Dependencies installed successfully.")
 
-# ✅ Auto-Healing for Torch
-def ensure_torch():
-    try:
-        import torch
-        st.write(f"Torch version {torch.__version__} is already installed.")
-    except ImportError:
-        st.warning("Torch not detected. Auto-installing the correct version for CPU...")
-        subprocess.run([
-            sys.executable, "-m", "pip", "install", 
-            "torch", 
-            "--index-url", "https://download.pytorch.org/whl/torch_stable.html"
-        ], check=True)
-        import torch
-        st.success(f"Torch version {torch.__version__} installed successfully.")
+    except subprocess.CalledProcessError as e:
+        st.error(f"❌ Error during dependency installation: {str(e)}")
 
-ensure_torch()
+# ✅ Ensure All Dependencies are Installed
+auto_install_dependencies()
 
 # ✅ Standard App Code Below (LLM Model Creation Tool)
 st.title("Autonomous Agentic Model Creation Tool (Secure LLM Choice)")
