@@ -42,6 +42,9 @@ class AgenticModel:
 
     def train_and_optimize(self, X_train, y_train):
         try:
+            # ✅ Import XGBoost Classifier and Regressor at the start
+            from xgboost import XGBClassifier, XGBRegressor
+
             # ✅ Ensure X_train is a DataFrame and y_train is a Series
             X_train = pd.DataFrame(X_train)
             y_train = pd.Series(y_train)
@@ -58,15 +61,13 @@ class AgenticModel:
             y_train = pd.to_numeric(y_train, errors='coerce').fillna(0)
 
             # ✅ Detect if target is continuous (Regression) or discrete (Classification)
-            if self.model_type == "XGBoost" and y_train.nunique() > 20:
-                st.warning("⚠️ Detected continuous values in the target variable. Switching to XGBRegressor.")
-                from xgboost import XGBRegressor
-                self.model = XGBRegressor()
-
-            elif self.model_type == "XGBoost" and y_train.nunique() <= 20:
-                st.success("✅ Detected discrete classes. Using XGBClassifier.")
-                from xgboost import XGBClassifier
-                self.model = XGBClassifier()
+            if self.model_type == "XGBoost":
+                if y_train.nunique() > 20:
+                    st.warning("⚠️ Detected continuous values in the target variable. Switching to XGBRegressor.")
+                    self.model = XGBRegressor()
+                else:
+                    st.success("✅ Detected discrete classes. Using XGBClassifier.")
+                    self.model = XGBClassifier()
 
             # ✅ Convert Continuous Values to Classes if Classification
             if self.model_type == "XGBoost" and isinstance(self.model, XGBClassifier):
@@ -95,6 +96,8 @@ class AgenticModel:
                             )
                     self.model.fit(X_train, y_train)
                     predictions = self.model.predict(X_train)
+                    
+                    # ✅ Use appropriate metric for classification or regression
                     if isinstance(self.model, XGBClassifier):
                         return accuracy_score(y_train, predictions)
                     else:
@@ -115,7 +118,6 @@ class AgenticModel:
 
         except Exception as e:
             st.error(f"❌ An unexpected error occurred: {str(e)}")
-
 
     def evaluate_model(self, X_test, y_test):
         predictions = self.model.predict(X_test)
