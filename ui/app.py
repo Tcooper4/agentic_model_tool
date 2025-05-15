@@ -1,7 +1,9 @@
 import streamlit as st
 import pandas as pd
 import openai
-import yfinance as yf
+import importlib.util
+import subprocess
+import sys
 from transformers import AutoTokenizer, AutoModelForSequenceClassification
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import accuracy_score, f1_score
@@ -11,6 +13,14 @@ from xgboost import XGBClassifier
 import optuna
 import numpy as np
 import re
+
+# ✅ Auto-Install Missing Libraries (yfinance, etc.)
+def ensure_package_installed(package):
+    if importlib.util.find_spec(package) is None:
+        subprocess.check_call([sys.executable, "-m", "pip", "install", package])
+
+ensure_package_installed("yfinance")
+import yfinance as yf
 
 # ✅ Agentic System (Dynamic Model Creation, Evaluation, and Optimization)
 class AgenticModel:
@@ -63,17 +73,28 @@ class AgenticModel:
         st.write(f"✅ Model Performance - Accuracy: {accuracy:.4f}, F1-Score: {f1:.4f}")
 
 # ✅ Streamlit UI (Highly User-Friendly)
-st.title("🌐 Agentic Model Creation Tool (Natural Language Prompting)")
+st.title("🌐 Agentic Model Creation Tool (Natural Language Prompting + LLM API Choice)")
 
 st.markdown("""
 ### Welcome to the Agentic Model Tool! 🚀
 - Simply enter what you want to do using plain language.
 - The tool will automatically understand your instructions and build the best model for you.
+- Choose between **OpenAI GPT-4 (Paid)** and **Hugging Face (Free)** for LLM tasks.
 """)
 
+# ✅ LLM API Choice
+llm_api_choice = st.sidebar.selectbox("Choose LLM API:", ["OpenAI GPT-4 (Paid)", "Hugging Face (Free - CPU Only)"])
+
+if llm_api_choice == "OpenAI GPT-4 (Paid)":
+    st.sidebar.write("🔑 **API Key Required for GPT-4**")
+    openai_api_key = st.sidebar.text_input("Enter Your OpenAI API Key (Secure)", type="password")
+    if openai_api_key:
+        st.session_state["openai_api_key"] = openai_api_key
+    st.sidebar.write("💡 **Estimated Cost:** ~$0.03 per 1000 tokens (GPT-4)")
+
+# ✅ Natural Language Prompting
 prompt_text = st.text_area("Enter Your Prompt (e.g., 'Forecast AAPL stock price.')", placeholder="Type your instructions here...")
 
-# ✅ Natural Language Understanding (Prompt Analysis)
 def analyze_prompt(prompt):
     prompt = prompt.lower()
     if "forecast" in prompt or "predict" in prompt:
@@ -98,14 +119,10 @@ if task_type == "forecasting":
         data['Return'] = data['Close'].pct_change().dropna()
         X = np.array(range(len(data))).reshape(-1, 1)
         y = data['Return'].dropna()
-        X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
         agent = AgenticModel(model_type="XGBoost", agentic_mode=True)
         agent.create_model()
-        agent.train_and_optimize(X_train, y_train)
-        agent.evaluate_model(X_test, y_test)
-
+        agent.train_and_optimize(X, y)
 elif task_type == "classification":
-    st.write("📊 Classification Task Detected.")
     uploaded_file = st.file_uploader("📂 Upload a CSV file for training (Required)")
     if uploaded_file:
         data = pd.read_csv(uploaded_file)
@@ -113,32 +130,19 @@ elif task_type == "classification":
         target_column = st.selectbox("Select Target Column (Label):", data.columns)
         X = data.drop(columns=[target_column])
         y = data[target_column]
-        X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
-        
         agent = AgenticModel(model_type="RandomForest", agentic_mode=True)
         agent.create_model()
-        agent.train_and_optimize(X_train, y_train)
-        agent.evaluate_model(X_test, y_test)
+        agent.train_and_optimize(X, y)
+elif task_type == "text-generation" and llm_api_choice == "OpenAI GPT-4 (Paid)":
+    if "openai_api_key" in st.session_state:
+        openai.api_key = st.session_state["openai_api_key"]
+        response = openai.Completion.create(
+            engine="gpt-4",
+            prompt=prompt_text,
+            max_tokens=100,
+            temperature=0.7
+        )
+        st.write("✅ Generated Text:", response.choices[0].text.strip())
+elif task_type == "text-generation" and llm_api_choice == "Hugging Face (Free - CPU Only)":
+    st.write("✅ Hugging Face text generation is not available in this setup.")
 
-elif task_type == "text-generation":
-    st.write("📜 Text Generation Task Detected (LLM).")
-    llm_type = st.selectbox("Choose LLM Type", ["Hugging Face (Free - CPU Only)", "OpenAI (GPT-4)"])
-    
-    if llm_type == "OpenAI (GPT-4)":
-        openai_api_key = st.text_input("Enter Your OpenAI API Key (Secure)", type="password")
-        if openai_api_key:
-            st.session_state["openai_api_key"] = openai_api_key
-
-    if st.button("🚀 Generate Text"):
-        if llm_type == "OpenAI (GPT-4)" and "openai_api_key" in st.session_state:
-            openai.api_key = st.session_state["openai_api_key"]
-            response = openai.Completion.create(
-                engine="gpt-4",
-                prompt=prompt_text,
-                max_tokens=100,
-                temperature=0.7
-            )
-            st.write("✅ Generated Text:", response.choices[0].text.strip())
-
-        elif llm_type == "Hugging Face (Free - CPU Only)":
-            st.write("✅ Hugging Face text generation is not available in this setup.")
