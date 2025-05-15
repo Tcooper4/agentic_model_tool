@@ -11,7 +11,7 @@ from xgboost import XGBClassifier, XGBRegressor
 import optuna
 import yfinance as yf
 import openai
-import os
+from transformers import AutoTokenizer, AutoModelForSequenceClassification
 import requests
 
 st.title("🚀 Agentic Model Creation Tool (Fully Automated with Data Sourcing)")
@@ -23,12 +23,15 @@ data_source = st.sidebar.selectbox("Data Source", ["Upload CSV", "Stock Data (Ya
 
 prompt = st.text_input("Enter Your Request or Prompt (e.g., 'Predict SP500', 'Classify Emails')")
 
-# API Key Configuration (Optional)
-st.sidebar.subheader("🔑 OpenAI API (Optional)")
-openai_api_key = st.sidebar.text_input("OpenAI API Key (Optional)", type="password")
-if openai_api_key:
-    openai.api_key = openai_api_key
-    st.sidebar.write("💡 Estimated Cost: ~$0.03 per 1,000 tokens")
+# LLM Configuration (Choose between Hugging Face or OpenAI)
+st.sidebar.subheader("🔑 LLM Configuration")
+llm_type = st.sidebar.selectbox("Choose LLM", ["Hugging Face (Free)", "OpenAI (GPT-4)"])
+
+if llm_type == "OpenAI (GPT-4)":
+    openai_api_key = st.sidebar.text_input("OpenAI API Key (Required for GPT-4)", type="password")
+    if openai_api_key:
+        openai.api_key = openai_api_key
+        st.sidebar.write("💡 Estimated Cost: ~$0.03 per 1,000 tokens")
 
 def fetch_api_data(source):
     if source == "Stock Data (Yahoo Finance)":
@@ -60,7 +63,6 @@ def fetch_api_data(source):
 
     return None
 
-# Main Application Logic
 data = None
 if data_source == "Upload CSV":
     uploaded_file = st.file_uploader("Upload a CSV file")
@@ -71,31 +73,27 @@ if data_source == "Upload CSV":
 else:
     data = fetch_api_data(data_source)
 
-# If data is available, continue with model training
 if data is not None and not data.empty:
     st.write("✅ Data Ready")
 
     if mode == "Fully Automated":
         st.write("🚀 Fully Automated Mode Selected")
-        y = data.iloc[:, -1]  # Assume last column is the target variable
-        X = data.iloc[:, :-1]  # All other columns are features
+        y = data.iloc[:, -1]
+        X = data.iloc[:, :-1]
 
         model = XGBClassifier() if y.nunique() <= 20 else XGBRegressor()
         model.fit(X, y)
         st.write("✅ Model Trained Automatically")
         st.write("### Model Performance")
         predictions = model.predict(X)
-        if y.nunique() > 20:
-            st.write(f"🔍 Mean Squared Error: {mean_squared_error(y, predictions)}")
-        else:
-            st.write(f"🔍 Accuracy: {accuracy_score(y, predictions)}")
+        st.write(f"🔍 Accuracy: {accuracy_score(y, predictions)}") if y.nunique() <= 20 else st.write(f"🔍 Mean Squared Error: {mean_squared_error(y, predictions)}")
 
     else:
         st.write("🔧 Advanced Mode Selected")
         model_type = st.selectbox("Choose Model Type", ["LogisticRegression", "RandomForest", "XGBoost", "LLM"])
 
         if model_type == "LLM":
-            if openai_api_key:
+            if llm_type == "OpenAI (GPT-4)" and openai_api_key:
                 response = openai.Completion.create(
                     engine="gpt-4",
                     prompt=prompt,
@@ -104,12 +102,16 @@ if data is not None and not data.empty:
                 )
                 st.write("🔮 LLM Response:")
                 st.write(response.choices[0].text.strip())
+            elif llm_type == "Hugging Face (Free)":
+                model_name = "distilbert-base-uncased"
+                tokenizer = AutoTokenizer.from_pretrained(model_name)
+                model = AutoModelForSequenceClassification.from_pretrained(model_name)
+                st.write("✅ Hugging Face LLM Ready (Free)")
             else:
-                st.error("❌ Please enter your OpenAI API Key for LLM")
+                st.error("❌ Please enter your OpenAI API Key for GPT-4")
 
         else:
-            st.write("🔍 Training Custom Model")
-            y = data.iloc[:, -1]  # Assume last column is the target variable
+            y = data.iloc[:, -1]
             X = data.iloc[:, :-1]
             if model_type == "LogisticRegression":
                 model = LogisticRegression()
@@ -122,18 +124,6 @@ if data is not None and not data.empty:
             st.write("✅ Model Trained")
             st.write("### Model Performance")
             predictions = model.predict(X)
-            if y.nunique() > 20:
-                st.write(f"🔍 Mean Squared Error: {mean_squared_error(y, predictions)}")
-            else:
-                st.write(f"🔍 Accuracy: {accuracy_score(y, predictions)}")
+            st.write(f"🔍 Accuracy: {accuracy_score(y, predictions)}") if y.nunique() <= 20 else st.write(f"🔍 Mean Squared Error: {mean_squared_error(y, predictions)}")
 else:
     st.error("❌ No Data Available. Please upload a file or connect to an API.")
-
-st.sidebar.markdown("### 🚀 How It Works")
-st.sidebar.write("""
-1. Choose data source (Upload CSV, Stock, Crypto, or Economic Data).
-2. If using API data, enter the specific symbol (e.g., AAPL for stocks).
-3. Choose 'Fully Automated' for automatic model selection or 'Advanced' to customize.
-4. If 'LLM' is chosen, enter an OpenAI API Key for GPT-4.
-5. Click 'Create and Train Model' to start.
-""")
