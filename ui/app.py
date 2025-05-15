@@ -1,8 +1,41 @@
+import subprocess
+import sys
 import streamlit as st
-import openai
-import pandas as pd
-from transformers import AutoModelForSequenceClassification, AutoTokenizer
 
+# ✅ Auto-Detecting and Installing Dependencies (Auto-Healing for Python 3.12)
+def ensure_dependencies():
+    try:
+        # Ensure PIP is up-to-date
+        subprocess.run([sys.executable, "-m", "pip", "install", "--upgrade", "pip"], check=True)
+        st.write("✅ PIP upgraded.")
+
+        # Install Cython (compatible version)
+        subprocess.run([sys.executable, "-m", "pip", "install", "--upgrade", "Cython==0.29.36"], check=True)
+        st.write("✅ Cython installed.")
+
+        # Install a precompiled version of Scikit-Learn (avoids compilation errors)
+        subprocess.run([sys.executable, "-m", "pip", "install", "--upgrade", 
+                        "scikit-learn", "--only-binary=:all:", "--no-cache-dir"], check=True)
+        st.write("✅ Scikit-Learn installed without compilation errors.")
+
+        # Install a compatible version of Torch for Python 3.12
+        subprocess.run([sys.executable, "-m", "pip", "install", "torch", "--index-url", "https://download.pytorch.org/whl/nightly/cpu"], check=True)
+        st.write("✅ Torch (CPU) installed for Python 3.12.")
+
+        # Install other dependencies (Hugging Face, OpenAI, Pandas)
+        subprocess.run([sys.executable, "-m", "pip", "install", "--upgrade", 
+                        "transformers", "openai",
+                        "pandas", "numpy", "PyYAML", "tqdm", 
+                        "markdown-it-py", "mdurl", "rich", "pygments"], check=True)
+        st.write("✅ All other dependencies installed.")
+        
+    except subprocess.CalledProcessError as e:
+        st.error(f"Error during dependency installation: {e}")
+
+# ✅ Automatically Ensure Dependencies are Installed
+ensure_dependencies()
+
+# ✅ Standard App Code Below (LLM Model Creation Tool)
 st.title("Autonomous Agentic Model Creation Tool (Secure LLM Choice)")
 
 st.sidebar.header("Model Configuration")
@@ -22,12 +55,14 @@ if st.button("Create and Train Model"):
     model = None
     if model_type == "LLM":
         if llm_type == "Hugging Face (Free)":
+            from transformers import AutoModelForSequenceClassification, AutoTokenizer
             model_name = "distilbert-base-uncased"
             tokenizer = AutoTokenizer.from_pretrained(model_name)
             model = AutoModelForSequenceClassification.from_pretrained(model_name)
             st.success(f"LLM Model (Hugging Face - {model_name}) created successfully.")
         
         elif llm_type == "OpenAI (GPT-4)" and "openai_api_key" in st.session_state:
+            import openai
             openai.api_key = st.session_state["openai_api_key"]
             st.success("LLM Model (OpenAI GPT-4) configured. Ready for classification or generation.")
         
