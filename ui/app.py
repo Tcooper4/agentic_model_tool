@@ -1,12 +1,37 @@
-
+import subprocess
+import sys
 import streamlit as st
-import openai
-import pandas as pd
 import os
-from transformers import AutoModelForSequenceClassification, AutoTokenizer, AutoModel
 
+# Auto-Detect and Install the Correct Torch Version (Universal)
+def ensure_torch():
+    try:
+        import torch
+        st.write(f"Torch version {torch.__version__} is already installed.")
+    except ImportError:
+        st.warning("Torch not detected. Auto-installing the correct version...")
+
+        python_version = sys.version_info
+        if python_version >= (3, 12):
+            # For Python 3.12+ (Streamlit Cloud)
+            subprocess.run([sys.executable, "-m", "pip", "install", "torch", "--index-url", "https://download.pytorch.org/whl/nightly/cpu"])
+        elif python_version >= (3, 8):
+            # For Python 3.8 to 3.11
+            subprocess.run([sys.executable, "-m", "pip", "install", "torch", "--index-url", "https://download.pytorch.org/whl/cpu"])
+        else:
+            st.error("Python version too old for Torch. Please upgrade.")
+
+        try:
+            import torch
+            st.success(f"Torch version {torch.__version__} installed successfully.")
+        except ImportError:
+            st.error("Failed to install Torch. Please try restarting the app.")
+
+# Ensure Torch is installed
+ensure_torch()
+
+# Proceed with your normal app code
 st.title("Autonomous Agentic Model Creation Tool (Secure LLM Choice)")
-
 st.sidebar.header("Model Configuration")
 model_type = st.sidebar.selectbox("Choose Model Type", ["LogisticRegression", "RandomForest", "XGBoost", "LLM"])
 llm_type = st.sidebar.selectbox("LLM Type", ["Hugging Face (Free)", "OpenAI (GPT-4)"])
@@ -22,15 +47,16 @@ uploaded_file = st.file_uploader("Upload a CSV file for training")
 
 if st.button("Create and Train Model"):
     model = None
-
     if model_type == "LLM":
         if llm_type == "Hugging Face (Free)":
+            from transformers import AutoModelForSequenceClassification, AutoTokenizer
             model_name = "distilbert-base-uncased"
             tokenizer = AutoTokenizer.from_pretrained(model_name)
             model = AutoModelForSequenceClassification.from_pretrained(model_name)
             st.success(f"LLM Model (Hugging Face - {model_name}) created successfully.")
         
         elif llm_type == "OpenAI (GPT-4)" and "openai_api_key" in st.session_state:
+            import openai
             openai.api_key = st.session_state["openai_api_key"]
             st.success("LLM Model (OpenAI GPT-4) configured. Ready for classification or generation.")
         
@@ -38,6 +64,7 @@ if st.button("Create and Train Model"):
             st.error("Please enter your OpenAI API Key for GPT-4.")
 
     if model and uploaded_file:
+        import pandas as pd
         data = pd.read_csv(uploaded_file)
         st.write("Uploaded Data Sample:", data.head())
         
@@ -65,33 +92,3 @@ if st.button("Create and Train Model"):
             st.write("Classification Results:", data[['text', 'Predictions']])
             st.download_button("Download Predictions", data.to_csv(index=False), "predictions.csv")
 
-        elif task_type == "generation":
-            texts = data[text_column].astype(str).tolist()
-            generations = []
-
-            if llm_type == "OpenAI (GPT-4)" and "openai_api_key" in st.session_state:
-                for text in texts:
-                    response = openai.Completion.create(
-                        engine="gpt-4",
-                        prompt=text,
-                        max_tokens=150,
-                        n=1,
-                        temperature=0.7
-                    )
-                    generations.append(response.choices[0].text.strip())
-
-            data['Generated Text'] = generations
-            st.write("Generated Text Results:", data[['text', 'Generated Text']])
-            st.download_button("Download Generated Text", data.to_csv(index=False), "generated_text.csv")
-
-        # Save Model Option
-        if model_type == "LLM" and llm_type == "Hugging Face (Free)":
-            if st.button("Save Model"):
-                model_dir = "saved_models/huggingface_model"
-                os.makedirs(model_dir, exist_ok=True)
-                model.save_pretrained(model_dir)
-                tokenizer.save_pretrained(model_dir)
-                st.success(f"Model saved to {model_dir}")
-
-        elif model_type == "LLM" and llm_type == "OpenAI (GPT-4)":
-            st.warning("OpenAI GPT-4 model cannot be saved locally (API-based).")
