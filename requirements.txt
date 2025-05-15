@@ -3,7 +3,7 @@ scikit-learn==1.2.2      # Machine Learning models
 optuna==3.1.0            # Hyperparameter Optimization
 xgboost==1.7.5           # Gradient Boosting Model
 transformers==4.28.1     # Hugging Face LLMs (DistilBERT, BERT)
-torch==2.0.1+cpu         # CPU-only version compatible with Streamlit Cloud
+torch==2.0.1             # Compatible version for Streamlit Cloud
 openai==0.27.4           # GPT-4 API integration (OpenAI)
 pandas==2.0.1            # Data handling (CSV uploads)
 numpy==1.24.3            # Numerical computations
