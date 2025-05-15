@@ -1,25 +1,14 @@
 import streamlit as st
 import pandas as pd
 import openai
-from transformers import AutoModelForSequenceClassification, AutoTokenizer
+from transformers import AutoTokenizer, AutoModelForSequenceClassification
 
-# ✅ Check Torch and Install if Missing (Without Forced Installation)
-def ensure_torch():
-    try:
-        import torch
-        st.write(f"✅ Torch version {torch.__version__} is already installed.")
-    except ImportError:
-        st.warning("❌ Torch is missing. Please install it using a compatible version.")
-
-# ✅ Ensure Torch is detected
-ensure_torch()
-
-# ✅ Standard App Code Below (LLM Model Creation Tool)
+# ✅ Guaranteed No Torch Dependency (Hugging Face CPU-Only)
 st.title("Autonomous Agentic Model Creation Tool (Secure LLM Choice)")
 
 st.sidebar.header("Model Configuration")
 model_type = st.sidebar.selectbox("Choose Model Type", ["LogisticRegression", "RandomForest", "XGBoost", "LLM"])
-llm_type = st.sidebar.selectbox("LLM Type", ["Hugging Face (Free)", "OpenAI (GPT-4)"])
+llm_type = st.sidebar.selectbox("LLM Type", ["Hugging Face (Free - CPU Only)", "OpenAI (GPT-4)"])
 
 # ✅ Secure API Key Input (Only stored in session)
 if llm_type == "OpenAI (GPT-4)":
@@ -33,11 +22,11 @@ uploaded_file = st.file_uploader("Upload a CSV file for training")
 if st.button("Create and Train Model"):
     model = None
     if model_type == "LLM":
-        if llm_type == "Hugging Face (Free)":
-            model_name = "distilbert-base-uncased"
+        if llm_type == "Hugging Face (Free - CPU Only)":
+            model_name = "nlptown/bert-base-multilingual-uncased-sentiment"
             tokenizer = AutoTokenizer.from_pretrained(model_name)
-            model = AutoModelForSequenceClassification.from_pretrained(model_name)
-            st.success(f"LLM Model (Hugging Face - {model_name}) created successfully.")
+            model = AutoModelForSequenceClassification.from_pretrained(model_name, device_map="cpu")
+            st.success(f"LLM Model (Hugging Face - {model_name}) created successfully (CPU Only).")
         
         elif llm_type == "OpenAI (GPT-4)" and "openai_api_key" in st.session_state:
             openai.api_key = st.session_state["openai_api_key"]
@@ -67,6 +56,30 @@ if st.button("Create and Train Model"):
                     )
                     predictions.append(response.choices[0].text.strip())
 
+            elif llm_type == "Hugging Face (Free - CPU Only)":
+                for text in texts:
+                    inputs = tokenizer(text, return_tensors="pt")
+                    outputs = model(**inputs)
+                    predictions.append(outputs.logits.argmax().item())
+            
             data['Predictions'] = predictions
             st.write("Classification Results:", data[[text_column, 'Predictions']])
             st.download_button("Download Predictions", data.to_csv(index=False), "predictions.csv")
+
+        elif task_type == "generation" and llm_type == "OpenAI (GPT-4)":
+            texts = data[text_column].astype(str).tolist()
+            generated_texts = []
+
+            for text in texts:
+                response = openai.Completion.create(
+                    engine="gpt-4",
+                    prompt=f"Generate text based on: {text}",
+                    max_tokens=100,
+                    n=1,
+                    temperature=0.7
+                )
+                generated_texts.append(response.choices[0].text.strip())
+
+            data['Generated Text'] = generated_texts
+            st.write("Generated Text Results:", data[[text_column, 'Generated Text']])
+            st.download_button("Download Generated Text", data.to_csv(index=False), "generated_text.csv")
