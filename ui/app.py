@@ -1,37 +1,34 @@
 import subprocess
 import sys
 import streamlit as st
-import os
 
-# Auto-Detect and Install the Correct Torch Version (Universal)
-def ensure_torch():
+# ✅ Auto-Detecting and Installing Dependencies
+def ensure_dependencies():
     try:
-        import torch
-        st.write(f"Torch version {torch.__version__} is already installed.")
-    except ImportError:
-        st.warning("Torch not detected. Auto-installing the correct version...")
+        # Auto-Detect and Install Cython (Ensures Scikit-Learn Compatibility)
+        subprocess.run([sys.executable, "-m", "pip", "install", "--upgrade", "Cython"], check=True)
+        # Auto-Detect and Install Scikit-Learn (Ensures Compatibility)
+        subprocess.run([sys.executable, "-m", "pip", "install", "--upgrade", "scikit-learn"], check=True)
+        # Auto-Detect and Install Torch (CPU-Only, Compatible with Python 3.12+)
+        subprocess.run([sys.executable, "-m", "pip", "install", "torch", "--index-url", "https://download.pytorch.org/whl/cpu"], check=True)
+        # Auto-Detect and Install Hugging Face Transformers
+        subprocess.run([sys.executable, "-m", "pip", "install", "--upgrade", "transformers", "torch"], check=True)
+        # Auto-Detect and Install OpenAI
+        subprocess.run([sys.executable, "-m", "pip", "install", "--upgrade", "openai"], check=True)
+        # Auto-Detect and Install Other Requirements
+        subprocess.run([sys.executable, "-m", "pip", "install", "--upgrade", 
+                        "pandas", "numpy", "PyYAML", "tqdm", 
+                        "markdown-it-py", "mdurl", "rich", "pygments"], check=True)
+        st.success("Dependencies are installed and up-to-date.")
+    except subprocess.CalledProcessError as e:
+        st.error(f"Error during dependency installation: {e}")
 
-        python_version = sys.version_info
-        if python_version >= (3, 12):
-            # For Python 3.12+ (Streamlit Cloud)
-            subprocess.run([sys.executable, "-m", "pip", "install", "torch", "--index-url", "https://download.pytorch.org/whl/nightly/cpu"])
-        elif python_version >= (3, 8):
-            # For Python 3.8 to 3.11
-            subprocess.run([sys.executable, "-m", "pip", "install", "torch", "--index-url", "https://download.pytorch.org/whl/cpu"])
-        else:
-            st.error("Python version too old for Torch. Please upgrade.")
+# ✅ Automatically Ensure Dependencies are Installed
+ensure_dependencies()
 
-        try:
-            import torch
-            st.success(f"Torch version {torch.__version__} installed successfully.")
-        except ImportError:
-            st.error("Failed to install Torch. Please try restarting the app.")
-
-# Ensure Torch is installed
-ensure_torch()
-
-# Proceed with your normal app code
+# ✅ Standard App Code Below (LLM Model Creation Tool)
 st.title("Autonomous Agentic Model Creation Tool (Secure LLM Choice)")
+
 st.sidebar.header("Model Configuration")
 model_type = st.sidebar.selectbox("Choose Model Type", ["LogisticRegression", "RandomForest", "XGBoost", "LLM"])
 llm_type = st.sidebar.selectbox("LLM Type", ["Hugging Face (Free)", "OpenAI (GPT-4)"])
@@ -85,10 +82,6 @@ if st.button("Create and Train Model"):
                     )
                     predictions.append(response.choices[0].text.strip())
 
-            elif llm_type == "Hugging Face (Free)":
-                st.write("Hugging Face model loaded. Predictions can be added here.")
-
             data['Predictions'] = predictions
             st.write("Classification Results:", data[['text', 'Predictions']])
             st.download_button("Download Predictions", data.to_csv(index=False), "predictions.csv")
-
