@@ -19,3 +19,4 @@ statsmodels
 fpdf2
 prophet
 tensorflow
+plotly
