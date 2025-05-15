@@ -13,3 +13,4 @@ markdown-it-py
 mdurl
 rich
 pygments
+yfinance
