@@ -14,3 +14,4 @@ mdurl
 rich
 pygments
 yfinance
+matplotlib
