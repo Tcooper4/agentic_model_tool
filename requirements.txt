@@ -22,3 +22,4 @@ tensorflow
 plotly
 shap
 streamlit_autorefresh
+seaborn
