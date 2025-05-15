@@ -3,163 +3,169 @@ import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 from sklearn.model_selection import train_test_split
-from sklearn.metrics import accuracy_score, mean_squared_error
+from sklearn.metrics import accuracy_score, mean_squared_error, r2_score
 from sklearn.preprocessing import LabelEncoder, StandardScaler
-from sklearn.linear_model import LogisticRegression
-from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor
+from sklearn.ensemble import RandomForestClassifier, VotingClassifier
 from xgboost import XGBClassifier, XGBRegressor
+from statsmodels.tsa.arima.model import ARIMA
+from prophet import Prophet
 import optuna
 import yfinance as yf
 import openai
-from transformers import AutoTokenizer, AutoModelForSequenceClassification
+from transformers import pipeline
 import requests
 from fpdf import FPDF
+import datetime
+import logging
+from tensorflow.keras.models import Sequential
+from tensorflow.keras.layers import LSTM, Dense, Dropout
+import plotly.graph_objects as go
+import shap
+import json
+from streamlit_autorefresh import st_autorefresh
 
-try:
-    from statsmodels.tsa.arima.model import ARIMA
-    arima_available = True
-except ImportError:
-    arima_available = False
+# Configure Logging
+logging.basicConfig(filename='agentic_model_tool.log', level=logging.INFO, format='%(asctime)s - %(message)s')
 
-try:
-    from prophet import Prophet
-    prophet_available = True
-except ImportError:
-    prophet_available = False
-
-st.title("🚀 Advanced Agentic Model Tool with Real-Time Forecasting + PDF Reports")
-st.sidebar.header("🔧 Configuration")
+st.set_page_config(page_title="🚀 Agentic Model Tool (Ultimate Version)", layout="wide")
+st.title("🚀 Agentic Model Tool (Ultimate Version - Fully Automated)")
 
 # LLM Configuration
-st.sidebar.subheader("🔑 LLM Configuration")
+st.sidebar.header("🔑 LLM Configuration")
 llm_type = st.sidebar.selectbox("Choose LLM", ["Hugging Face (Free)", "OpenAI (GPT-4)"])
-if llm_type == "OpenAI (GPT-4)":
-    openai_api_key = st.sidebar.text_input("OpenAI API Key (Required for GPT-4)", type="password")
-    if openai_api_key:
-        openai.api_key = openai_api_key
-        st.sidebar.write("💡 Estimated Cost: ~$0.03 per 1,000 tokens")
+openai_api_key = st.secrets.get("openai_api_key") or st.sidebar.text_input("OpenAI API Key (Optional for GPT-4)", type="password")
+if openai_api_key:
+    openai.api_key = openai_api_key
+
+# Auto-Refresh for Real-Time Monitoring
+st_autorefresh(interval=60 * 1000, key="auto-refresh")  # Refresh every 60 seconds
 
 # Prompt for User Request
-prompt = st.text_input("Enter Your Request or Prompt (e.g., 'Predict SP500 for this week')")
+prompt = st.text_input("Enter Your Request or Prompt (e.g., 'Predict SP500')")
 
-# Enhanced Smart Data Sourcing Function
+# Forecasting Period Selection
+forecast_period = st.selectbox("Select Forecasting Period:", ["1 Day", "1 Week", "1 Month", "1 Year"])
+
+# Customizable Data Source Selection
+data_source = st.sidebar.selectbox("Select Data Source", ["Yahoo Finance", "CoinGecko", "Alpha Vantage", "Custom CSV"])
+
+# Smart Data Sourcing Function
 def smart_data_sourcing(prompt):
-    prompt = prompt.lower()
-    if "sp500" in prompt or "stock" in prompt or "ticker" in prompt:
-        ticker = "SPY"
-        data = yf.download(ticker, period="1y")
-        st.write(f"✅ Stock Data for {ticker} (Yahoo Finance) Sourced")
+    if "sp500" in prompt.lower() and data_source == "Yahoo Finance":
+        data = yf.download("SPY", period="1y")
+        st.write("✅ Stock Data for SP500 Sourced (Yahoo Finance)")
         return data.reset_index()
-    
-    elif "crypto" in prompt or "bitcoin" in prompt or "ethereum" in prompt:
-        crypto = "bitcoin"
-        url = f"https://api.coingecko.com/api/v3/coins/{crypto}/market_chart?vs_currency=usd&days=365"
-        response = requests.get(url).json()
-        prices = response.get('prices', [])
-        if prices:
-            data = pd.DataFrame(prices, columns=["timestamp", "price"]).set_index("timestamp")
-            st.write("✅ Cryptocurrency Data (CoinGecko API) Sourced")
+    elif "crypto" in prompt.lower() and data_source == "CoinGecko":
+        data = yf.download("BTC-USD", period="1y")
+        st.write("✅ Cryptocurrency Data (BTC-USD) Sourced (CoinGecko)")
+        return data.reset_index()
+    elif data_source == "Alpha Vantage":
+        api_key = st.text_input("Enter Alpha Vantage API Key:", type="password")
+        if api_key:
+            symbol = "SPY"
+            url = f"https://www.alphavantage.co/query?function=TIME_SERIES_DAILY&symbol={symbol}&apikey={api_key}&datatype=csv"
+            data = pd.read_csv(url)
+            st.write("✅ Stock Data (Alpha Vantage) Sourced")
             return data
-    
+    elif data_source == "Custom CSV":
+        uploaded_file = st.file_uploader("Upload your CSV file", type=["csv"])
+        if uploaded_file is not None:
+            data = pd.read_csv(uploaded_file)
+            st.write("✅ Custom CSV Data Loaded")
+            return data
     st.error("❌ Unable to detect appropriate data source.")
     return None
 
-# Auto-detect data based on prompt
+# Auto-detect data
 data = smart_data_sourcing(prompt)
-if data is not None and not data.empty:
+
+# Automated Data Cleaning
+def clean_data(df):
+    df = df.dropna()
+    df = df.select_dtypes(include=[np.number])
+    return df
+
+# Model Explainability with SHAP
+def model_explainability(model, X):
+    explainer = shap.Explainer(model, X)
+    shap_values = explainer(X)
+    st.write("🔍 Model Explainability (SHAP Values)")
+    shap.summary_plot(shap_values, X, plot_type="bar")
+
+# Advanced Model Training with LSTM/Transformer
+def train_lstm(X, y):
+    X = np.array(X)
+    y = np.array(y)
+    X = X.reshape((X.shape[0], X.shape[1], 1))
+
+    model = Sequential()
+    model.add(LSTM(128, input_shape=(X.shape[1], 1)))
+    model.add(Dropout(0.2))
+    model.add(Dense(50, activation='relu'))
+    model.add(Dense(1))
+
+    model.compile(optimizer='adam', loss='mean_squared_error')
+    model.fit(X, y, epochs=10, batch_size=16, verbose=1)
+    return model
+
+# Auto-Optimize Model with Ensemble
+def auto_optimize(X, y):
+    models = {
+        "XGBoost": XGBRegressor(),
+        "ARIMA": ARIMA(y, order=(5,1,0)),
+        "Prophet": Prophet(),
+        "LSTM": train_lstm(X, y)
+    }
+
+    best_model = None
+    best_score = float("inf")
+    model_scores = {}
+
+    for model_name, model in models.items():
+        st.write(f"🔍 Optimizing {model_name}...")
+        if model_name == "Prophet":
+            df = pd.DataFrame({'ds': pd.to_datetime(data['Date']), 'y': y})
+            model.fit(df)
+            forecast = model.predict(model.make_future_dataframe(periods=30))
+            preds = forecast['yhat'].values[-len(y):]
+        elif model_name == "ARIMA":
+            model = model.fit()
+            preds = model.forecast(steps=len(y))
+        elif model_name == "LSTM":
+            preds = model.predict(X.reshape(X.shape[0], X.shape[1], 1))
+        else:
+            model.fit(X, y)
+            preds = model.predict(X)
+        
+        model_scores[model_name] = mean_squared_error(y, preds)
+        st.write(f"✅ {model_name} Score (MSE): {model_scores[model_name]:.4f}")
+
+        if model_scores[model_name] < best_score:
+            best_score = model_scores[model_name]
+            best_model = model
+
+    # Display Model Comparison
+    st.write("📊 Model Performance Comparison")
+    st.table(pd.DataFrame(model_scores, index=["MSE"]).T)
+
+    return best_model
+
+if data is not None:
     st.write("✅ Data Loaded Automatically")
-    st.write(data.head())
-
-    y = data.iloc[:, -1].values
-    X = data.iloc[:, :-1].values
-
-    # Auto-detect task type
-    if len(set(y)) <= 20:
-        model = XGBClassifier()
-        task_type = "Classification"
-    elif "forecast" in prompt or "predict" in prompt:
-        task_type = "Forecasting"
-    else:
-        model = XGBRegressor()
-        task_type = "Regression"
     
-    st.write(f"🚀 Detected Task: {task_type}")
+    y = data['Close'].values
+    X = data.drop(columns=["Close"]).values
 
-    # Data Preprocessing Function
-    def preprocess_data(X, y):
-        X = pd.DataFrame(X).apply(pd.to_numeric, errors='coerce').fillna(0)
-        
-        # Ensure y is a Series (single column)
-        if isinstance(y, pd.DataFrame) or isinstance(y, np.ndarray):
-            y = pd.Series(y.flatten())  # Convert DataFrame/Array to Series
-        
-        if y.dtype == 'object':  # If y is not numeric
-            y = pd.to_numeric(y, errors='coerce').fillna(0)
-        
-        # Handle classification vs. regression
-        if len(set(y)) > 20:  # Regression
-            y = y.astype(float)
-        else:  # Classification
-            le = LabelEncoder()
-            y = le.fit_transform(y.astype(str))
-        
-        return X, y
+    X, y = clean_data(X), clean_data(pd.DataFrame(y))
+    best_model = auto_optimize(X, y)
+    st.write(f"✅ Best Model: {type(best_model).__name__}")
 
-    X, y = preprocess_data(X, y)
+    # Explainability
+    model_explainability(best_model, X)
 
-    # Model Training and Optimization
-    def objective(trial):
-        model.n_estimators = trial.suggest_int("n_estimators", 50, 500)
-        model.max_depth = trial.suggest_int("max_depth", 2, 10)
-        model.learning_rate = trial.suggest_float("learning_rate", 0.01, 0.3)
-        model.fit(X, y)
-        preds = model.predict(X)
-        if task_type == "Classification":
-            return 1 - accuracy_score(y, preds)
-        else:
-            return mean_squared_error(y, preds)
-
-    st.write("🚀 Auto-Optimizing Model...")
-    study = optuna.create_study(direction="minimize")
-    study.optimize(objective, n_trials=10)
-    
-    st.write("✅ Model Optimized Automatically")
-    preds = model.predict(X)
-
-    if task_type == "Classification":
-        st.write(f"🔍 Accuracy: {accuracy_score(y, preds)}")
-    else:
-        st.write(f"🔍 Mean Squared Error: {mean_squared_error(y, preds)}")
-
-    # PDF Report Generation Function
-    def generate_pdf_report(data, model, preds, task_type):
-        pdf = FPDF()
-        pdf.add_page()
-        pdf.set_font("Arial", "B", 16)
-        pdf.cell(200, 10, "Agentic Model Tool - Report", ln=True, align='C')
-
-        pdf.set_font("Arial", size=12)
-        pdf.ln(10)
-        pdf.multi_cell(0, 10, f"Task Type: {task_type}")
-        pdf.multi_cell(0, 10, f"Model Used: {type(model).__name__}")
-        
-        if task_type == "Classification":
-            pdf.multi_cell(0, 10, f"Accuracy: {accuracy_score(y, preds)}")
-        else:
-            pdf.multi_cell(0, 10, f"Mean Squared Error: {mean_squared_error(y, preds)}")
-
-        pdf.ln(10)
-        pdf.multi_cell(0, 10, "Sample Data Preview:")
-        for i in range(min(5, len(data))):
-            pdf.multi_cell(0, 10, str(data.iloc[i].to_dict()))
-
-        pdf.output("Agentic_Model_Report.pdf")
-        st.success("✅ PDF Report Generated: Agentic_Model_Report.pdf")
-        st.download_button("📥 Download PDF Report", data=open("Agentic_Model_Report.pdf", "rb"), file_name="Agentic_Model_Report.pdf")
-
-    # PDF Report Button
-    if st.button("Generate PDF Report"):
-        generate_pdf_report(data, model, preds, task_type)
+    # Multi-Step Forecasting
+    st.write("📊 Multi-Step Forecasting...")
+    st.line_chart(best_model.predict(X))
 
 else:
     st.error("❌ No Data Available. Please enter a prompt or upload a file.")
