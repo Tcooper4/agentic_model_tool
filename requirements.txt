@@ -1,8 +1,11 @@
-streamlit
-scikit-learn
-optuna
-xgboost
-transformers
-pandas
-numpy
-PyYAML
+streamlit==1.21.0         # Core UI framework
+scikit-learn==1.2.2       # Machine Learning models (Logistic Regression, RandomForest)
+optuna==3.1.0             # Hyperparameter Optimization
+xgboost==1.7.5            # Gradient Boosting Model
+transformers==4.28.1      # Hugging Face LLMs (DistilBERT, BERT)
+torch==2.0.1              # Required for Hugging Face Transformers (PyTorch backend)
+openai==0.27.4            # GPT-4 API integration (OpenAI)
+pandas==2.0.1             # Data handling (CSV uploads)
+numpy==1.24.3             # Numerical computations
+PyYAML==6.0               # Configuration management
+tqdm==4.65.0              # Progress bars
