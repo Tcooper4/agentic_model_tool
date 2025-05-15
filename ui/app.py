@@ -12,7 +12,11 @@ def ensure_torch():
         st.write(f"Torch version {torch.__version__} is already installed.")
     except ImportError:
         st.warning("Torch not detected. Auto-installing the correct version for CPU...")
-        subprocess.run([sys.executable, "-m", "pip", "install", "torch==2.0.1", "--index-url", "https://download.pytorch.org/whl/cpu"], check=True)
+        subprocess.run([
+            sys.executable, "-m", "pip", "install", 
+            "torch", 
+            "--index-url", "https://download.pytorch.org/whl/torch_stable.html"
+        ], check=True)
         import torch
         st.success(f"Torch version {torch.__version__} installed successfully.")
 
@@ -74,7 +78,7 @@ if st.button("Create and Train Model"):
 
             elif llm_type == "Hugging Face (Free)":
                 st.write("Hugging Face model loaded. Fine-tuning skipped for simplicity.")
-                # You can add classification logic here if needed
+                # Optionally, you can add your Hugging Face classification logic here
 
             data['Predictions'] = predictions
             st.write("Classification Results:", data[[text_column, 'Predictions']])
@@ -82,7 +86,7 @@ if st.button("Create and Train Model"):
 
         elif task_type == "generation":
             texts = data[text_column].astype(str).tolist()
-            outputs = []
+            generated_texts = []
 
             if llm_type == "OpenAI (GPT-4)" and "openai_api_key" in st.session_state:
                 for text in texts:
@@ -93,8 +97,8 @@ if st.button("Create and Train Model"):
                         n=1,
                         temperature=0.7
                     )
-                    outputs.append(response.choices[0].text.strip())
+                    generated_texts.append(response.choices[0].text.strip())
 
-            data['Generated Text'] = outputs
+            data['Generated Text'] = generated_texts
             st.write("Generated Text Results:", data[[text_column, 'Generated Text']])
             st.download_button("Download Generated Text", data.to_csv(index=False), "generated_text.csv")
