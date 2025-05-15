@@ -13,11 +13,21 @@ import yfinance as yf
 import openai
 from transformers import AutoTokenizer, AutoModelForSequenceClassification
 import requests
-import datetime
-from statsmodels.tsa.arima.model import ARIMA
 from fpdf import FPDF
 
-st.title("🚀 Advanced Agentic Model Tool with Real-Time Forecasting + Reports")
+try:
+    from statsmodels.tsa.arima.model import ARIMA
+    arima_available = True
+except ImportError:
+    arima_available = False
+
+try:
+    from prophet import Prophet
+    prophet_available = True
+except ImportError:
+    prophet_available = False
+
+st.title("🚀 Advanced Agentic Model Tool with Real-Time Forecasting + PDF Reports")
 st.sidebar.header("🔧 Configuration")
 
 # LLM Configuration
@@ -63,7 +73,7 @@ if data is not None and not data.empty:
     y = data.iloc[:, -1].values
     X = data.iloc[:, :-1].values
 
-    # Auto-detect task type (Classification, Regression, or Forecasting)
+    # Auto-detect task type
     if len(set(y)) <= 20:
         model = XGBClassifier()
         task_type = "Classification"
@@ -74,7 +84,7 @@ if data is not None and not data.empty:
         task_type = "Regression"
     
     st.write(f"🚀 Detected Task: {task_type}")
-    
+
     # Data Preprocessing Function
     def preprocess_data(X, y):
         X = pd.DataFrame(X).apply(pd.to_numeric, errors='coerce').fillna(0)
@@ -86,67 +96,59 @@ if data is not None and not data.empty:
 
     X, y = preprocess_data(X, y)
 
-    if task_type == "Forecasting":
-        st.write("🔮 Performing Time-Series Forecasting...")
-        data['Close'] = pd.to_numeric(data['Close'], errors='coerce').fillna(0)
-        model = ARIMA(data['Close'], order=(5, 1, 0))
-        model_fit = model.fit()
-        forecast = model_fit.forecast(steps=7)
-        st.write("📈 Forecasted Prices for Next 7 Days:")
-        st.line_chart(forecast)
-    
-    else:
-        # Auto-optimization with Optuna
-        def objective(trial):
-            model.n_estimators = trial.suggest_int("n_estimators", 50, 500)
-            model.max_depth = trial.suggest_int("max_depth", 2, 10)
-            model.learning_rate = trial.suggest_float("learning_rate", 0.01, 0.3)
-            model.fit(X, y)
-            preds = model.predict(X)
-            if task_type == "Classification":
-                return 1 - accuracy_score(y, preds)
-            else:
-                return mean_squared_error(y, preds)
-
-        st.write("🚀 Auto-Optimizing Model...")
-        study = optuna.create_study(direction="minimize")
-        study.optimize(objective, n_trials=10)
-        
-        st.write("✅ Model Optimized Automatically")
+    # Model Training and Optimization
+    def objective(trial):
+        model.n_estimators = trial.suggest_int("n_estimators", 50, 500)
+        model.max_depth = trial.suggest_int("max_depth", 2, 10)
+        model.learning_rate = trial.suggest_float("learning_rate", 0.01, 0.3)
+        model.fit(X, y)
         preds = model.predict(X)
-
         if task_type == "Classification":
-            st.write(f"🔍 Accuracy: {accuracy_score(y, preds)}")
+            return 1 - accuracy_score(y, preds)
         else:
-            st.write(f"🔍 Mean Squared Error: {mean_squared_error(y, preds)}")
+            return mean_squared_error(y, preds)
 
-    # Automatic Report Generation
-    def generate_report():
+    st.write("🚀 Auto-Optimizing Model...")
+    study = optuna.create_study(direction="minimize")
+    study.optimize(objective, n_trials=10)
+    
+    st.write("✅ Model Optimized Automatically")
+    preds = model.predict(X)
+
+    if task_type == "Classification":
+        st.write(f"🔍 Accuracy: {accuracy_score(y, preds)}")
+    else:
+        st.write(f"🔍 Mean Squared Error: {mean_squared_error(y, preds)}")
+
+    # PDF Report Generation Function
+    def generate_pdf_report(data, model, preds, task_type):
         pdf = FPDF()
         pdf.add_page()
         pdf.set_font("Arial", "B", 16)
-        pdf.cell(200, 10, "Agentic Model Tool Report", 0, 1, "C")
-        pdf.set_font("Arial", "", 12)
+        pdf.cell(200, 10, "Agentic Model Tool - Report", ln=True, align='C')
+
+        pdf.set_font("Arial", size=12)
         pdf.ln(10)
-        pdf.multi_cell(0, 10, f"Task: {task_type}\nPrompt: {prompt}\n")
-        pdf.multi_cell(0, 10, f"Data Source: Auto-Detected\n")
-        pdf.multi_cell(0, 10, f"Model: {'ARIMA' if task_type == 'Forecasting' else model.__class__.__name__}\n")
-        pdf.multi_cell(0, 10, f"Results:\n")
-
-        if task_type == "Forecasting":
-            pdf.multi_cell(0, 10, f"Forecasted Values:\n{forecast.to_string()}\n")
-        else:
-            if task_type == "Classification":
-                pdf.multi_cell(0, 10, f"Accuracy: {accuracy_score(y, preds)}\n")
-            else:
-                pdf.multi_cell(0, 10, f"Mean Squared Error: {mean_squared_error(y, preds)}\n")
+        pdf.multi_cell(0, 10, f"Task Type: {task_type}")
+        pdf.multi_cell(0, 10, f"Model Used: {type(model).__name__}")
         
-        report_path = "Agentic_Model_Report.pdf"
-        pdf.output(report_path)
-        st.download_button("📄 Download Report", data=open(report_path, "rb"), file_name=report_path)
+        if task_type == "Classification":
+            pdf.multi_cell(0, 10, f"Accuracy: {accuracy_score(y, preds)}")
+        else:
+            pdf.multi_cell(0, 10, f"Mean Squared Error: {mean_squared_error(y, preds)}")
 
-    st.write("📄 Generating Report...")
-    generate_report()
+        pdf.ln(10)
+        pdf.multi_cell(0, 10, "Sample Data Preview:")
+        for i in range(min(5, len(data))):
+            pdf.multi_cell(0, 10, str(data.iloc[i].to_dict()))
+
+        pdf.output("Agentic_Model_Report.pdf")
+        st.success("✅ PDF Report Generated: Agentic_Model_Report.pdf")
+        st.download_button("📥 Download PDF Report", data=open("Agentic_Model_Report.pdf", "rb"), file_name="Agentic_Model_Report.pdf")
+
+    # PDF Report Button
+    if st.button("Generate PDF Report"):
+        generate_pdf_report(data, model, preds, task_type)
 
 else:
     st.error("❌ No Data Available. Please enter a prompt or upload a file.")

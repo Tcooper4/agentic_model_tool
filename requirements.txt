@@ -15,3 +15,4 @@ rich
 pygments
 yfinance
 matplotlib
+statsmodels
