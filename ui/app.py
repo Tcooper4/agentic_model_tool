@@ -57,6 +57,23 @@ class AgenticModel:
             X_train = X_train.apply(pd.to_numeric, errors='coerce').fillna(0)
             y_train = pd.to_numeric(y_train, errors='coerce').fillna(0)
 
+            # ✅ Detect if target is continuous (Regression) or discrete (Classification)
+            if self.model_type == "XGBoost" and y_train.nunique() > 20:
+                st.warning("⚠️ Detected continuous values in the target variable. Switching to XGBRegressor.")
+                from xgboost import XGBRegressor
+                self.model = XGBRegressor()
+
+            elif self.model_type == "XGBoost" and y_train.nunique() <= 20:
+                st.success("✅ Detected discrete classes. Using XGBClassifier.")
+                from xgboost import XGBClassifier
+                self.model = XGBClassifier()
+
+            # ✅ Convert Continuous Values to Classes if Classification
+            if self.model_type == "XGBoost" and isinstance(self.model, XGBClassifier):
+                if y_train.nunique() > 20:
+                    st.warning("⚠️ Target values are continuous. Converting to categories for classification.")
+                    y_train = pd.cut(y_train, bins=20, labels=False)
+            
             if self.agentic_mode:
                 def objective(trial):
                     if self.model_type == "LogisticRegression":
@@ -66,13 +83,22 @@ class AgenticModel:
                             n_estimators=trial.suggest_int("n_estimators", 10, 200)
                         )
                     elif self.model_type == "XGBoost":
-                        self.model = XGBClassifier(
-                            n_estimators=trial.suggest_int("n_estimators", 10, 200),
-                            max_depth=trial.suggest_int("max_depth", 3, 10),
-                        )
+                        if isinstance(self.model, XGBClassifier):
+                            self.model = XGBClassifier(
+                                n_estimators=trial.suggest_int("n_estimators", 10, 200),
+                                max_depth=trial.suggest_int("max_depth", 3, 10),
+                            )
+                        else:
+                            self.model = XGBRegressor(
+                                n_estimators=trial.suggest_int("n_estimators", 10, 200),
+                                max_depth=trial.suggest_int("max_depth", 3, 10),
+                            )
                     self.model.fit(X_train, y_train)
                     predictions = self.model.predict(X_train)
-                    return accuracy_score(y_train, predictions)
+                    if isinstance(self.model, XGBClassifier):
+                        return accuracy_score(y_train, predictions)
+                    else:
+                        return -np.mean((y_train - predictions) ** 2)
                 
                 st.write("🚀 Optimizing model with Optuna (Auto-Optimization)...")
                 study = optuna.create_study(direction="maximize")
@@ -85,7 +111,7 @@ class AgenticModel:
 
         except ValueError as ve:
             st.error(f"❌ XGBoost encountered an error: {str(ve)}")
-            st.error("⚠️ This is often caused by non-numerical data or missing values. Please check your data.")
+            st.error("⚠️ This is often caused by non-numerical data, missing values, or continuous target values in classification.")
 
         except Exception as e:
             st.error(f"❌ An unexpected error occurred: {str(e)}")
