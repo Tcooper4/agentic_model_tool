@@ -158,8 +158,7 @@ if data is not None and not data.empty:
                 prophet_model.fit(prophet_df)
                 future = prophet_model.make_future_dataframe(periods=forecast_period)
                 forecast = prophet_model.predict(future)
-                mse = mean_squared_error(y[-forecast_period:], forecast['yhat'][-forecast_period:])
-                st.write(f"🔍 Prophet MSE: {mse}")
+                st.write(forecast[['ds', 'yhat']].tail())
 
             return model
 
