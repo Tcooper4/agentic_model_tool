@@ -12,17 +12,16 @@ import optuna
 import yfinance as yf
 import openai
 import os
+import requests
 
-# Streamlit UI Setup
-st.title("🚀 Agentic Model Creation Tool (Fully Automated with Prompting)")
+st.title("🚀 Agentic Model Creation Tool (Fully Automated with Data Sourcing)")
 st.sidebar.header("Configuration")
 
-# User selects model type or fully automated
+# User selects mode
 mode = st.sidebar.selectbox("Mode", ["Fully Automated", "Advanced Mode"])
-prompt = st.text_input("Enter Your Request or Prompt (e.g., 'Predict SP500', 'Classify Emails')")
+data_source = st.sidebar.selectbox("Data Source", ["Upload CSV", "Stock Data (Yahoo Finance)", "Crypto (CoinGecko)", "Economic Data (FRED)"])
 
-st.markdown("### Upload Your Data")
-uploaded_file = st.file_uploader("Upload a CSV file")
+prompt = st.text_input("Enter Your Request or Prompt (e.g., 'Predict SP500', 'Classify Emails')")
 
 # API Key Configuration (Optional)
 st.sidebar.subheader("🔑 OpenAI API (Optional)")
@@ -31,71 +30,62 @@ if openai_api_key:
     openai.api_key = openai_api_key
     st.sidebar.write("💡 Estimated Cost: ~$0.03 per 1,000 tokens")
 
-# Function to automatically clean and preprocess data
-def clean_data(data):
-    st.write("🔄 Cleaning and Preprocessing Data...")
-    data = pd.get_dummies(data, drop_first=True)
-    data.fillna(0, inplace=True)
-    st.success("✅ Data Cleaning Complete")
-    return data
+def fetch_api_data(source):
+    if source == "Stock Data (Yahoo Finance)":
+        ticker = st.text_input("Enter Stock Ticker (e.g., AAPL, MSFT)")
+        if ticker:
+            data = yf.download(ticker, period="1y")
+            st.write(data.head())
+            return data.reset_index()
 
-# Function to automatically detect target type (Regression or Classification)
-def detect_target_type(y):
-    if y.nunique() > 20:
-        st.write("🔍 Detected Continuous Values - Using Regression")
-        return "regression"
-    else:
-        st.write("🔍 Detected Discrete Values - Using Classification")
-        return "classification"
+    elif source == "Crypto (CoinGecko)":
+        crypto = st.text_input("Enter Cryptocurrency (e.g., bitcoin, ethereum)")
+        if crypto:
+            url = f"https://api.coingecko.com/api/v3/coins/{crypto}/market_chart?vs_currency=usd&days=365"
+            response = requests.get(url).json()
+            prices = response['prices']
+            data = pd.DataFrame(prices, columns=["timestamp", "price"]).set_index("timestamp")
+            st.write(data.head())
+            return data
 
-# Function for automatic training and optimization
-def auto_train_and_optimize(X, y):
-    st.write("🚀 Auto Model Training and Optimization")
+    elif source == "Economic Data (FRED)":
+        indicator = st.text_input("Enter FRED Indicator (e.g., GDP, CPI)")
+        if indicator:
+            url = f"https://api.stlouisfed.org/fred/series/observations?series_id={indicator}&api_key=YOUR_FRED_API_KEY&file_type=json"
+            response = requests.get(url).json()
+            observations = response['observations']
+            data = pd.DataFrame(observations)
+            st.write(data.head())
+            return data
 
-    if detect_target_type(y) == "regression":
-        model = XGBRegressor()
-    else:
-        model = XGBClassifier()
-
-    def objective(trial):
-        model.set_params(
-            n_estimators=trial.suggest_int("n_estimators", 10, 200),
-            max_depth=trial.suggest_int("max_depth", 3, 10)
-        )
-        model.fit(X, y)
-        predictions = model.predict(X)
-        if detect_target_type(y) == "regression":
-            return -mean_squared_error(y, predictions)
-        else:
-            return accuracy_score(y, predictions)
-
-    study = optuna.create_study(direction="maximize")
-    study.optimize(objective, n_trials=10)
-    st.success(f"✅ Optimization Complete. Best Parameters: {study.best_params}")
-
-    model.set_params(**study.best_params)
-    model.fit(X, y)
-    st.success("✅ Model Training Complete")
-    return model
+    return None
 
 # Main Application Logic
-if uploaded_file:
-    data = pd.read_csv(uploaded_file)
-    st.write("✅ Data Uploaded")
-    st.write(data.head())
+data = None
+if data_source == "Upload CSV":
+    uploaded_file = st.file_uploader("Upload a CSV file")
+    if uploaded_file:
+        data = pd.read_csv(uploaded_file)
+        st.write("✅ Data Uploaded")
+        st.write(data.head())
+else:
+    data = fetch_api_data(data_source)
+
+# If data is available, continue with model training
+if data is not None and not data.empty:
+    st.write("✅ Data Ready")
 
     if mode == "Fully Automated":
         st.write("🚀 Fully Automated Mode Selected")
         y = data.iloc[:, -1]  # Assume last column is the target variable
         X = data.iloc[:, :-1]  # All other columns are features
 
-        X = clean_data(X)
-        model = auto_train_and_optimize(X, y)
-
-        st.write("✅ Final Model Trained")
+        model = XGBClassifier() if y.nunique() <= 20 else XGBRegressor()
+        model.fit(X, y)
+        st.write("✅ Model Trained Automatically")
         st.write("### Model Performance")
         predictions = model.predict(X)
-        if detect_target_type(y) == "regression":
+        if y.nunique() > 20:
             st.write(f"🔍 Mean Squared Error: {mean_squared_error(y, predictions)}")
         else:
             st.write(f"🔍 Accuracy: {accuracy_score(y, predictions)}")
@@ -117,31 +107,33 @@ if uploaded_file:
             else:
                 st.error("❌ Please enter your OpenAI API Key for LLM")
 
-        elif model_type in ["LogisticRegression", "RandomForest", "XGBoost"]:
+        else:
             st.write("🔍 Training Custom Model")
             y = data.iloc[:, -1]  # Assume last column is the target variable
             X = data.iloc[:, :-1]
-            X = clean_data(X)
-
             if model_type == "LogisticRegression":
                 model = LogisticRegression()
             elif model_type == "RandomForest":
                 model = RandomForestClassifier()
             else:
-                model = XGBClassifier()
+                model = XGBClassifier() if y.nunique() <= 20 else XGBRegressor()
 
             model.fit(X, y)
             st.write("✅ Model Trained")
             st.write("### Model Performance")
             predictions = model.predict(X)
-            st.write(f"🔍 Accuracy: {accuracy_score(y, predictions)}")
+            if y.nunique() > 20:
+                st.write(f"🔍 Mean Squared Error: {mean_squared_error(y, predictions)}")
+            else:
+                st.write(f"🔍 Accuracy: {accuracy_score(y, predictions)}")
+else:
+    st.error("❌ No Data Available. Please upload a file or connect to an API.")
 
 st.sidebar.markdown("### 🚀 How It Works")
 st.sidebar.write("""
-1. Enter a prompt (e.g., 'Predict SP500', 'Classify Emails').
-2. Upload your CSV file.
-3. The tool will automatically inspect the data, clean it, and select the best model type.
-4. If 'Fully Automated' mode is selected, it will automatically train and optimize the model.
-5. If 'Advanced Mode' is selected, you can customize the model.
-6. For LLM mode, OpenAI API Key is required. Costs are estimated ~$0.03 per 1,000 tokens.
+1. Choose data source (Upload CSV, Stock, Crypto, or Economic Data).
+2. If using API data, enter the specific symbol (e.g., AAPL for stocks).
+3. Choose 'Fully Automated' for automatic model selection or 'Advanced' to customize.
+4. If 'LLM' is chosen, enter an OpenAI API Key for GPT-4.
+5. Click 'Create and Train Model' to start.
 """)
