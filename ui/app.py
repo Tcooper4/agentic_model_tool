@@ -8,15 +8,13 @@ from transformers import AutoModelForSequenceClassification, AutoTokenizer
 # ✅ Self-Healing Function for Dependencies (Full Auto-Compatibility)
 def auto_install_dependencies():
     try:
-        # Upgrade PIP
-        subprocess.run([sys.executable, "-m", "pip", "install", "--upgrade", "pip"], check=True)
-
-        # Auto-Install Missing Dependencies
-        subprocess.run([sys.executable, "-m", "pip", "install", "--upgrade", 
+        # Auto-Install Missing Dependencies (without upgrading PIP)
+        subprocess.run([sys.executable, "-m", "pip", "install", "--no-cache-dir", 
                         "setuptools", "wheel", "Cython"], check=True)
-        subprocess.run([sys.executable, "-m", "pip", "install", "scikit-learn", "torch", 
-                        "transformers", "openai", "pandas", "numpy", "PyYAML", 
-                        "tqdm", "markdown-it-py", "mdurl", "rich", "pygments"], check=True)
+        subprocess.run([sys.executable, "-m", "pip", "install", "--no-cache-dir",
+                        "scikit-learn", "torch", "transformers", "openai", 
+                        "pandas", "numpy", "PyYAML", "tqdm", 
+                        "markdown-it-py", "mdurl", "rich", "pygments"], check=True)
         st.success("✅ Dependencies installed successfully.")
 
     except subprocess.CalledProcessError as e:
