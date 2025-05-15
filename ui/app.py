@@ -85,7 +85,7 @@ class AgenticModel:
             f1 = f1_score(y_test, predictions, average='weighted')
             st.write(f"✅ Model Performance - Accuracy: {accuracy:.4f}, F1-Score: {f1:.4f}")
 
-# ✅ Streamlit UI (User-Friendly Agentic Model Tool)
+# ✅ Streamlit UI (Highly User-Friendly)
 st.title("🌐 Agentic Model Creation Tool (Beginner-Friendly)")
 
 st.markdown("""
@@ -106,19 +106,34 @@ if llm_type == "OpenAI (GPT-4)":
     openai_api_key = st.sidebar.text_input("Enter Your OpenAI API Key (Secure)", type="password")
     if openai_api_key:
         st.session_state["openai_api_key"] = openai_api_key
+    st.sidebar.write("💡 **Estimated Cost:** Each request costs ~$0.03 per 1000 tokens for GPT-4.")
 
 # ✅ Agentic Mode Toggle
 agentic_mode = st.sidebar.checkbox("Enable Agentic Mode (Auto-Optimization)", value=True)
-st.sidebar.write("Agentic Mode automatically finds the best settings for your model.")
+st.sidebar.write("""
+**Agentic Mode:** 
+- Automatically finds the best settings for your model using Optuna.
+- Only affects non-LLM models (Logistic Regression, Random Forest, XGBoost).
+""")
 
-# ✅ LLM Settings (Advanced)
+# ✅ LLM Settings (Detailed Descriptions)
 if model_type == "LLM":
     st.markdown("### 📌 LLM Prompt Settings (Text Generation)")
     prompt_text = st.text_area("Enter your prompt for the LLM", placeholder="Type your prompt here...")
-    st.write("Customize how the LLM responds:")
+    
+    st.write("""
+    **Temperature:** Controls creativity. Higher values (0.8 - 1.0) make output more random. 
+    Lower values (0.2 - 0.5) make output more focused.
+    """)
     temperature = st.slider("Temperature (Creativity)", 0.0, 1.0, 0.7)
+    
+    st.write("**Max Tokens:** Maximum length of the generated text.")
     max_tokens = st.slider("Max Tokens (Response Length)", 10, 500, 100)
-    top_p = st.slider("Top-P (Nucleus Sampling)", 0.0, 1.0, 0.9)
+    
+    st.write("**Top-P (Nucleus Sampling):** Controls diversity. Lower values make output more focused.")
+    top_p = st.slider("Top-P (Diversity Control)", 0.0, 1.0, 0.9)
+    
+    st.write("**Frequency Penalty:** Prevents repetitive text in responses.")
     freq_penalty = st.slider("Frequency Penalty", -2.0, 2.0, 0.0)
 
 uploaded_file = st.file_uploader("📂 Upload a CSV file for training (Optional for LLM)")
@@ -126,18 +141,3 @@ uploaded_file = st.file_uploader("📂 Upload a CSV file for training (Optional 
 if st.button("🚀 Create and Train Model"):
     agent = AgenticModel(model_type=model_type, llm_type=llm_type, agentic_mode=agentic_mode)
     agent.create_model()
-
-    if model_type == "LLM" and prompt_text:
-        response = agent.run_llm_prompt(prompt_text, temperature, max_tokens, top_p, freq_penalty)
-        st.write("✅ LLM Response:", response)
-    
-    elif uploaded_file:
-        data = pd.read_csv(uploaded_file)
-        st.write("📊 Uploaded Data Sample:", data.head())
-        target_column = st.selectbox("Select Target Column (Label):", data.columns)
-        X = data.drop(columns=[target_column])
-        y = data[target_column]
-        X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
-
-        agent.train_and_optimize(X_train, y_train)
-        agent.evaluate_model(X_test, y_test)
