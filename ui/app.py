@@ -88,10 +88,21 @@ if data is not None and not data.empty:
     # Data Preprocessing Function
     def preprocess_data(X, y):
         X = pd.DataFrame(X).apply(pd.to_numeric, errors='coerce').fillna(0)
-        y = pd.to_numeric(y, errors='coerce').fillna(0)
-        if len(set(y)) <= 20:
+        
+        # Ensure y is a Series (single column)
+        if isinstance(y, pd.DataFrame) or isinstance(y, np.ndarray):
+            y = pd.Series(y.flatten())  # Convert DataFrame/Array to Series
+        
+        if y.dtype == 'object':  # If y is not numeric
+            y = pd.to_numeric(y, errors='coerce').fillna(0)
+        
+        # Handle classification vs. regression
+        if len(set(y)) > 20:  # Regression
+            y = y.astype(float)
+        else:  # Classification
             le = LabelEncoder()
-            y = le.fit_transform(y)
+            y = le.fit_transform(y.astype(str))
+        
         return X, y
 
     X, y = preprocess_data(X, y)
