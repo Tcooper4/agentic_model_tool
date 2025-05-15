@@ -1,27 +1,35 @@
 
-import sys
-import os
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-
 import streamlit as st
 import yaml
-from core.model_factory import create_model
-from core.performance_evaluator import evaluate_model
-from core.optimizer import optimize_model
+import openai
+from transformers import AutoModelForSequenceClassification, AutoTokenizer
 
-st.title("Autonomous Agentic Model Creation Tool")
+st.title("Autonomous Agentic Model Creation Tool (LLM Enhanced)")
 
 st.sidebar.header("Model Configuration")
 model_type = st.sidebar.selectbox("Choose Model Type", ["LogisticRegression", "RandomForest", "XGBoost", "LLM"])
-task_type = st.sidebar.selectbox("Task Type", ["classification", "regression"])
+llm_type = st.sidebar.selectbox("LLM Type", ["Hugging Face", "OpenAI (GPT-4)"])
 
-st.sidebar.subheader("Training Data")
+# API Key input for OpenAI GPT-4
+if llm_type == "OpenAI (GPT-4)":
+    openai_api_key = st.sidebar.text_input("OpenAI API Key", type="password")
+    if openai_api_key:
+        openai.api_key = openai_api_key
+
+task_type = st.sidebar.selectbox("Task Type", ["classification", "regression"])
 uploaded_file = st.file_uploader("Upload a CSV file for training")
 
 if st.button("Create and Train Model"):
-    config = {"model_type": model_type}
-    model = create_model(config)
-    st.success(f"Model created: {model}")
+    if model_type == "LLM":
+        if llm_type == "Hugging Face":
+            model_name = "distilbert-base-uncased"
+            tokenizer = AutoTokenizer.from_pretrained(model_name)
+            model = AutoModelForSequenceClassification.from_pretrained(model_name)
+            st.success(f"LLM Model (Hugging Face - {model_name}) created successfully.")
+        elif llm_type == "OpenAI (GPT-4)" and openai_api_key:
+            st.success("LLM Model (OpenAI GPT-4) configured. Ready to classify or generate text.")
+        else:
+            st.error("Please enter your OpenAI API Key for GPT-4.")
 
     if uploaded_file:
         import pandas as pd
@@ -29,15 +37,24 @@ if st.button("Create and Train Model"):
         X = data.drop(columns="target")
         y = data["target"]
         
-        # Training Model
-        model.fit(X, y)
-        st.write("Model Trained Successfully")
+        if model_type == "LLM" and llm_type == "OpenAI (GPT-4)" and openai_api_key:
+            st.write("Sending text samples to GPT-4 for classification...")
+            predictions = []
+            for text in X.iloc[:, 0]:  # Assuming first column is text data
+                response = openai.Completion.create(
+                    engine="gpt-4",
+                    prompt=f"Classify the following text: {text}",
+                    max_tokens=50,
+                    n=1,
+                    stop=None,
+                    temperature=0.7
+                )
+                predictions.append(response.choices[0].text.strip())
 
-        # Evaluating Model
-        metrics = evaluate_model(model, X, y, task_type)
-        st.write("Performance:", metrics)
+            st.write("Classification Results:", predictions)
+        elif model_type == "LLM":
+            st.write("Hugging Face LLM is loaded. Fine-tuning skipped for simplicity.")
 
-        # Optimizing Model
-        st.write("Optimizing Model...")
-        model = optimize_model(model, X, y)
-        st.success("Model Optimized")
+        else:
+            st.write("Model training is only available for non-LLM models here.")
+
