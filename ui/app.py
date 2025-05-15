@@ -9,7 +9,8 @@ from sklearn.model_selection import train_test_split
 from sklearn.metrics import accuracy_score, f1_score
 from sklearn.linear_model import LogisticRegression
 from sklearn.ensemble import RandomForestClassifier
-from xgboost import XGBClassifier
+from xgboost import XGBClassifier, plot_importance
+import matplotlib.pyplot as plt
 import optuna
 import numpy as np
 import re
@@ -40,6 +41,14 @@ class AgenticModel:
         st.success(f"✅ {self.model_type} model created.")
 
     def train_and_optimize(self, X_train, y_train):
+        X_train = pd.DataFrame(X_train)
+        y_train = pd.Series(y_train)
+
+        # ✅ Convert Categorical Data to Numerical (if any)
+        X_train = pd.get_dummies(X_train, drop_first=True)
+        X_train.fillna(0, inplace=True)
+        y_train.fillna(0, inplace=True)
+
         if self.agentic_mode:
             def objective(trial):
                 if self.model_type == "LogisticRegression":
@@ -72,6 +81,15 @@ class AgenticModel:
         f1 = f1_score(y_test, predictions, average='weighted')
         st.write(f"✅ Model Performance - Accuracy: {accuracy:.4f}, F1-Score: {f1:.4f}")
 
+        if self.model_type in ["RandomForest", "XGBoost"]:
+            st.write("📊 Feature Importance:")
+            if self.model_type == "XGBoost":
+                plot_importance(self.model)
+                st.pyplot(plt)
+            else:
+                feature_importance = pd.Series(self.model.feature_importances_, index=X_test.columns)
+                st.bar_chart(feature_importance.sort_values(ascending=False))
+
 # ✅ Streamlit UI (Highly User-Friendly)
 st.title("🌐 Agentic Model Creation Tool (Natural Language Prompting + LLM API Choice)")
 
@@ -92,7 +110,6 @@ if llm_api_choice == "OpenAI GPT-4 (Paid)":
         st.session_state["openai_api_key"] = openai_api_key
     st.sidebar.write("💡 **Estimated Cost:** ~$0.03 per 1000 tokens (GPT-4)")
 
-# ✅ Natural Language Prompting
 prompt_text = st.text_area("Enter Your Prompt (e.g., 'Forecast AAPL stock price.')", placeholder="Type your instructions here...")
 
 def analyze_prompt(prompt):
@@ -115,7 +132,6 @@ if task_type == "forecasting":
         ticker = ticker.group(0).upper()
         st.write(f"📈 Forecasting for ticker: {ticker}")
         data = yf.download(ticker, period="1y")
-        st.write("📊 Stock Data Sample:", data.head())
         data['Return'] = data['Close'].pct_change().dropna()
         X = np.array(range(len(data))).reshape(-1, 1)
         y = data['Return'].dropna()
@@ -126,7 +142,6 @@ elif task_type == "classification":
     uploaded_file = st.file_uploader("📂 Upload a CSV file for training (Required)")
     if uploaded_file:
         data = pd.read_csv(uploaded_file)
-        st.write("📊 Uploaded Data Sample:", data.head())
         target_column = st.selectbox("Select Target Column (Label):", data.columns)
         X = data.drop(columns=[target_column])
         y = data[target_column]
@@ -136,13 +151,5 @@ elif task_type == "classification":
 elif task_type == "text-generation" and llm_api_choice == "OpenAI GPT-4 (Paid)":
     if "openai_api_key" in st.session_state:
         openai.api_key = st.session_state["openai_api_key"]
-        response = openai.Completion.create(
-            engine="gpt-4",
-            prompt=prompt_text,
-            max_tokens=100,
-            temperature=0.7
-        )
+        response = openai.Completion.create(engine="gpt-4", prompt=prompt_text, max_tokens=100, temperature=0.7)
         st.write("✅ Generated Text:", response.choices[0].text.strip())
-elif task_type == "text-generation" and llm_api_choice == "Hugging Face (Free - CPU Only)":
-    st.write("✅ Hugging Face text generation is not available in this setup.")
-
