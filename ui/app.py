@@ -70,15 +70,21 @@ if data is not None and not data.empty:
     y = data.iloc[:, -1].values
     X = data.iloc[:, :-1].values
 
-    # Data Preprocessing (Ensures Numeric Only)
+    # Updated Data Preprocessing (Ensures Numeric Only)
     def preprocess_data(X, y):
         X = pd.DataFrame(X).apply(pd.to_numeric, errors='coerce').fillna(0)
+        
+        if isinstance(y, pd.DataFrame):
+            y = y.squeeze()  # Convert DataFrame to Series if necessary
+
         if len(set(y)) > 20:  # Regression
             y = pd.to_numeric(y, errors='coerce').fillna(0)
         else:  # Classification
             le = LabelEncoder()
             y = le.fit_transform(y)
+        
         return X, y
+
 
     X, y = preprocess_data(X, y)
 
