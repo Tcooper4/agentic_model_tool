@@ -1,25 +1,41 @@
+# Streamlit and Core Libraries
 streamlit
-scikit-learn
-Cython
-optuna
-xgboost
-transformers
-openai
 pandas
 numpy
+matplotlib
+seaborn
+plotly
+scikit-learn
+scipy
+cython
+
+# Machine Learning and Optimization
+tensorflow
+xgboost
+prophet
+arch
+transformers
+optuna
+
+# Language Models (OpenAI + Hugging Face)
+openai
+transformers
+torch
 PyYAML
-tqdm
 markdown-it-py
 mdurl
 rich
 pygments
+
+# Data Loading and Processing
 yfinance
-matplotlib
-statsmodels
 fpdf2
-prophet
-tensorflow
-plotly
-shap
+
+# Streamlit Upgrades
 streamlit_autorefresh
-seaborn
+streamlit-aggrid
+streamlit-lottie
+
+# Advanced Visualization and Plotting
+shap
+plotly
