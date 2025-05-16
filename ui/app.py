@@ -6,17 +6,21 @@ import yfinance as yf
 import plotly.graph_objects as go
 import json
 import os
+import streamlit_autorefresh
 
 st.set_page_config(page_title="🚀 Advanced Agentic Model Creation Tool", layout="wide")
-st.title("🚀 Advanced Agentic Model Creation Tool (Real-Time Data, Auto-Run, Best Strategy Detection)")
+st.title("🚀 Advanced Agentic Model Creation Tool (Auto-Run, Leaderboard, Best Strategy Detection)")
 
 # Sidebar Configuration
 st.sidebar.header("🔧 Configuration")
-prompt = st.sidebar.text_input("Enter Your Request or Prompt (e.g., 'Predict SP500')", "")
+prompt = st.sidebar.text_input("Enter Your Request or Prompt (e.g., 'Predict AAPL')", "")
 forecast_period = st.sidebar.number_input("Forecast Period (Days)", min_value=1, max_value=365, value=7)
 auto_run = st.sidebar.checkbox("🔄 Auto-Run Strategies Daily", value=True)
 save_file = "optimized_strategies.json"
 log_file = "strategy_performance_log.csv"
+
+# Auto-Refresh Every 24 Hours
+streamlit_autorefresh.interval = 24 * 60 * 60 * 1000  # 24 hours in milliseconds
 
 # Smart Data Sourcing (Real-Time)
 @st.cache_data(ttl=60 * 60)
@@ -56,7 +60,7 @@ if data is not None and not data.empty:
 
     optimized_strategies = load_optimized_strategies()
     st.subheader("✅ Loaded Optimized Strategies")
-    st.write(optimized_strategies)
+    st.write(optimized_strategies if optimized_strategies else "❌ No saved strategies found.")
 
     # Apply and Evaluate Strategies
     def apply_strategy(df, strategy, params):
@@ -83,31 +87,38 @@ if data is not None and not data.empty:
             file.write(f"{datetime.now().strftime('%Y-%m-%d')},{strategy},{json.dumps(params)},{performance:.4f}\n")
 
     # Auto-Run Strategies Daily
-    if auto_run:
+    if auto_run and optimized_strategies:
         for strategy, params in optimized_strategies.items():
             data = apply_strategy(data, strategy, params)
             cumulative_return = data['Cumulative_Return'].iloc[-1]
             log_strategy_performance(strategy, params, cumulative_return)
         st.success("✅ Auto-Run Completed: Strategies have been logged.")
 
-    # Display Strategy Comparison
-    st.subheader("📊 Strategy Comparison")
-    fig = go.Figure()
-
-    for strategy, params in optimized_strategies.items():
-        data = apply_strategy(data, strategy, params)
-        fig.add_trace(go.Scatter(x=data['Date'], y=data['Cumulative_Return'], name=f"{strategy}"))
-
-    st.plotly_chart(fig, use_container_width=True)
+    # Display Strategy Leaderboard
+    st.subheader("📊 Strategy Leaderboard")
+    if os.path.exists(log_file) and os.path.getsize(log_file) > 0:
+        performance_log = pd.read_csv(log_file)
+        if not performance_log.empty:
+            leaderboard = performance_log.groupby("Strategy").agg(
+                Average_Return=('Cumulative_Return', 'mean'),
+                Std_Dev=('Cumulative_Return', 'std'),
+                Sharpe_Ratio=('Cumulative_Return', lambda x: x.mean() / x.std() if x.std() != 0 else 0)
+            ).sort_values(by="Average_Return", ascending=False)
+            st.dataframe(leaderboard)
+        else:
+            st.write("❌ No performance data available yet.")
+    else:
+        st.write("❌ No performance data available yet.")
 
     # Best Strategy of All-Time
     st.subheader("🏆 Best Strategy of All-Time")
-    if os.path.exists(log_file):
-        performance_log = pd.read_csv(log_file)
-        best_strategy = performance_log.groupby("Strategy").Cumulative_Return.mean().idxmax()
-        best_return = performance_log.groupby("Strategy").Cumulative_Return.mean().max()
-        st.write(f"✅ Best Strategy: {best_strategy} with Average Return: {best_return:.4f}")
-        st.write(performance_log)
+    if os.path.exists(log_file) and os.path.getsize(log_file) > 0:
+        if not performance_log.empty:
+            best_strategy = leaderboard.index[0]
+            best_return = leaderboard.iloc[0]['Average_Return']
+            st.write(f"✅ Best Strategy: {best_strategy} with Average Return: {best_return:.4f}")
+        else:
+            st.write("❌ No performance data available yet.")
     else:
         st.write("❌ No performance data available yet.")
 
