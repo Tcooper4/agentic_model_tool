@@ -40,31 +40,35 @@ def smart_data_sourcing(prompt):
     
     if ticker:
         st.write(f"✅ Fetching Real-Time Data for {ticker} (Yahoo Finance)")
-        data = yf.download(ticker, period="2y", interval="1d")
-        data.reset_index(inplace=True)
+        try:
+            data = yf.download(ticker, period="2y", interval="1d")
+            if data.empty:
+                st.error(f"❌ No data found for {ticker}. Please enter a valid ticker.")
+                return None
+            
+            data.reset_index(inplace=True)
+            
+            # Automatically Detect Date Column
+            possible_date_columns = [col for col in data.columns if any(date_kw in col.lower() for date_kw in ['date', 'timestamp', 'time', 'datetime'])]
+            
+            if not possible_date_columns:
+                st.error("❌ No 'Date' column found in the data. Unable to proceed.")
+                return None
 
-        # Automatically Detect Date Column
-        date_columns = [col for col in data.columns if "date" in col.lower() or "timestamp" in col.lower()]
-        if not date_columns:
-            st.error("❌ No 'Date' column found in the data.")
-            return None
-        
-        # Use the first matching column as the Date column
-        date_column = date_columns[0]
-        data.rename(columns={date_column: "Date"}, inplace=True)
-        data['Date'] = pd.to_datetime(data['Date'], errors='coerce')
+            # Use the first matching column as the Date column
+            date_column = possible_date_columns[0]
+            data.rename(columns={date_column: "Date"}, inplace=True)
+            data['Date'] = pd.to_datetime(data['Date'], errors='coerce')
 
-        # Drop rows with invalid dates
-        if 'Date' in data.columns:
+            # Drop rows with invalid dates
             data.dropna(subset=['Date'], inplace=True)
-        else:
-            st.error("❌ 'Date' column could not be properly parsed.")
+            data = data[data['Date'] <= datetime.now()]  # Only keep historical dates
+
+            return data
+
+        except Exception as e:
+            st.error(f"❌ Error fetching data for {ticker}: {str(e)}")
             return None
-
-        # Ensure only historical dates
-        data = data[data['Date'] <= datetime.now()]
-
-        return data
 
     st.error("❌ Unable to detect appropriate data source. Please enter a valid request.")
     return None
