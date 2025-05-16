@@ -5,7 +5,9 @@ import numpy as np
 import openai
 from transformers import pipeline
 from statsmodels.tsa.arima.model import ARIMA
-from sklearn.preprocessing import MinMaxScaler, Ridge, GradientBoostingRegressor, RandomForestRegressor
+from sklearn.preprocessing import MinMaxScaler
+from sklearn.linear_model import Ridge
+from sklearn.ensemble import GradientBoostingRegressor, RandomForestRegressor
 from keras.models import Sequential
 from keras.layers import LSTM, Dense
 from xgboost import XGBRegressor
@@ -78,43 +80,16 @@ def model_builder_agent(y):
     ridge.fit(X, y)
     models['Ridge'] = ridge.predict(np.arange(len(y), len(y) + 30).reshape(-1, 1))
 
-    # Self-Improving Model Search (Automatic)
-    try:
-        new_model_names = discover_new_models()
-        for model_name in new_model_names:
-            model_func = importlib.import_module(model_name)
-            models[model_name] = model_func.predict(y)
-    except Exception as e:
-        st.warning(f"⚠️ Model Auto-Discovery Error: {str(e)}")
+    # RandomForest & Gradient Boosting (Scikit-Learn)
+    rf = RandomForestRegressor()
+    rf.fit(X, y)
+    models['RandomForest'] = rf.predict(np.arange(len(y), len(y) + 30).reshape(-1, 1))
+
+    gbr = GradientBoostingRegressor()
+    gbr.fit(X, y)
+    models['GradientBoosting'] = gbr.predict(np.arange(len(y), len(y) + 30).reshape(-1, 1))
 
     return models
-
-# ✅ Automatically Discover New Models (Online Research)
-def discover_new_models():
-    model_urls = [
-        "https://huggingface.co/models",
-        "https://scikit-learn.org/stable/supervised_learning.html",
-        "https://pytorch.org/hub/",
-        "https://keras.io/api/"
-    ]
-    new_models = []
-
-    for url in model_urls:
-        try:
-            response = requests.get(url)
-            if response.status_code == 200:
-                if "huggingface" in url:
-                    new_models.append("transformers.AutoModelForSeq2SeqLM")
-                elif "scikit-learn" in url:
-                    new_models.append("sklearn.linear_model.LinearRegression")
-                elif "pytorch" in url:
-                    new_models.append("torch.nn.Linear")
-                elif "keras" in url:
-                    new_models.append("keras.layers.GRU")
-        except Exception:
-            continue
-
-    return new_models
 
 # ✅ Home Page (Prompt Input)
 if page == "Home":
@@ -125,7 +100,7 @@ if page == "Home":
 
 # ✅ Forecasting Page (Dynamic + Auto-Discovered Models)
 if page == "Forecasting":
-    st.header("📈 Fully Autonomous Forecasting (Self-Improving + Auto-Research)")
+    st.header("📈 Fully Autonomous Forecasting (Self-Improving)")
     y = data['Target'].values
     models = model_builder_agent(y)
     st.write("✅ Models Built:", list(models.keys()))
@@ -137,7 +112,7 @@ if page == "Forecasting":
     fig.update_layout(title="Model Forecasts (Interactive)", xaxis_title="Date", yaxis_title="Price")
     st.plotly_chart(fig)
 
-# ✅ Hybrid Model (Auto-Weighted + Dynamic + Self-Improving)
+# ✅ Hybrid Model (Auto-Weighted + Self-Improving)
 if page == "Hybrid Model":
     st.header("🔧 Auto-Weighted Hybrid Model (Self-Improving)")
     y = data['Target'].values
