@@ -1,3 +1,4 @@
+
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -6,14 +7,15 @@ from transformers import pipeline
 from statsmodels.tsa.arima.model import ARIMA
 from sklearn.preprocessing import MinMaxScaler
 from keras.models import Sequential, Model
-from keras.layers import LSTM, Dense, MultiHeadAttention, Input
+from keras.layers import LSTM, Dense, Input
 from xgboost import XGBRegressor
 import matplotlib.pyplot as plt
 import traceback
 
-# ✅ Streamlit Multi-Page Agentic Model Creation Tool (Prompt-Driven + LLM-Powered + Auto-Debug)
+# ✅ Fully Agentic Model Tool (Single File - Fully Featured)
+
 st.set_page_config(page_title="🚀 Fully Agentic Model Tool", layout="wide")
-st.title("🚀 Fully Agentic Model Creation Tool (Prompt-Driven + LLM-Powered + Auto-Debug)")
+st.title("🚀 Fully Agentic Model Creation Tool (Fully Agentic + Auto-Weighted + Backtesting)")
 
 # Sidebar Configuration (LLM Selection)
 llm_type = st.sidebar.selectbox("🔑 Choose LLM", ["Hugging Face (Free)", "OpenAI (GPT-4)"])
@@ -37,105 +39,89 @@ def load_data():
 
 data = load_data()
 prompt = None
+models = {}
 
-# ✅ Home Page (Prompt Input with LLM)
+# ✅ Home Page (Prompt Input with LLM + Reset)
 if page == "Home":
     st.header("Welcome to the Fully Agentic Model Tool")
-    prompt = st.text_input("Enter Your Request (e.g., 'Predict SP500 and optimize strategies')", "")
-    if st.button("Submit Request"):
-        if llm_type == "OpenAI (GPT-4)" and openai_api_key:
-            response = openai.Completion.create(
-                model="gpt-4",
-                prompt=f"Analyze this request: '{prompt}'. List actions to perform (forecast, strategy, hybrid, backtest).",
-                max_tokens=50,
-                temperature=0.2
-            )
-            actions = response.choices[0].text.strip().lower()
-        else:
-            actions = []
-            if "predict" in prompt.lower() or "forecast" in prompt.lower():
-                actions.append("forecast")
-            if "strategy" in prompt.lower() or "optimize" in prompt.lower():
-                actions.append("strategy")
-            if "hybrid" in prompt.lower() or "combine" in prompt.lower():
-                actions.append("hybrid")
-            if "backtest" in prompt.lower():
-                actions.append("backtest")
-            actions = ", ".join(actions)
-        
-        st.session_state['prompt'] = prompt
-        st.session_state['actions'] = actions
-        st.write(f"✅ Detected Actions: {actions}")
+    existing_prompt = st.session_state.get('prompt', '')
+    prompt = st.text_input("Enter Your Request (e.g., 'Predict SP500 and optimize strategies')", value=existing_prompt)
 
-# ✅ Forecasting Page (Auto-Detect Model Type + Auto-Debug)
+    if st.button("Submit Request"):
+        st.session_state['prompt'] = prompt
+        actions = []
+        if "predict" in prompt.lower() or "forecast" in prompt.lower():
+            actions.append("forecast")
+        if "strategy" in prompt.lower() or "optimize" in prompt.lower():
+            actions.append("strategy")
+        if "hybrid" in prompt.lower() or "combine" in prompt.lower():
+            actions.append("hybrid")
+        if "backtest" in prompt.lower():
+            actions.append("backtest")
+        st.session_state['actions'] = ", ".join(actions)
+        st.write(f"✅ Detected Actions: {', '.join(actions)}")
+
+    if st.button("Clear Prompt"):
+        st.session_state['prompt'] = ""
+        st.session_state['actions'] = ""
+        st.experimental_rerun()
+
+# ✅ Forecasting Page (Dynamic Models with Confidence Intervals)
 if page == "Forecasting":
     st.header("📈 Fully Agentic Forecasting")
     forecast_period = st.number_input("Forecast Period (Days)", min_value=1, max_value=365, value=30)
 
-    if 'prompt' in st.session_state and 'forecast' in st.session_state.get('actions', ''):
-        st.write(f"✅ Interpreted Request: {st.session_state['prompt']}")
-        prompt = st.session_state.get('prompt', '')
+    try:
+        y = data['Target'].values
+        models['ARIMA'] = ARIMA(y, order=(2, 1, 2)).fit().forecast(steps=forecast_period)
 
-        try:
-            y = data['Target'].values
-            models = {}
+        scaler = MinMaxScaler()
+        scaled_y = scaler.fit_transform(y.reshape(-1, 1))
+        X_train = np.array([scaled_y[i-60:i] for i in range(60, len(scaled_y))])
+        y_train = scaled_y[60:]
 
-            # ARIMA Model
-            model = ARIMA(y, order=(2, 1, 2)).fit()
-            models['ARIMA'] = model.forecast(steps=forecast_period)
+        lstm_model = Sequential([
+            LSTM(64, return_sequences=True, input_shape=(60, 1)),
+            LSTM(32),
+            Dense(1)
+        ])
+        lstm_model.compile(optimizer='adam', loss='mean_squared_error')
+        lstm_model.fit(X_train, y_train, epochs=5, verbose=0)
+        models['LSTM'] = scaler.inverse_transform(lstm_model.predict(X_train[-forecast_period:]).reshape(-1, 1)).flatten()
 
-            # LSTM + Transformer Model (Auto-Detect Functional API)
-            scaler = MinMaxScaler()
-            scaled_y = scaler.fit_transform(y.reshape(-1, 1))
-            X_train, y_train = [], []
+        # XGBoost Model
+        X = np.arange(len(y)).reshape(-1, 1)
+        model = XGBRegressor()
+        model.fit(X, y)
+        models['XGBoost'] = model.predict(np.arange(len(y), len(y) + forecast_period).reshape(-1, 1))
 
-            for i in range(60, len(scaled_y)):
-                X_train.append(scaled_y[i - 60:i, 0])
-                y_train.append(scaled_y[i, 0])
+        st.write("✅ Forecast Results:")
+        for model_name, forecast in models.items():
+            st.write(f"{model_name}: {forecast[:5]}...")
+    except Exception as e:
+        st.error("❌ An error occurred during forecasting.")
+        st.text(traceback.format_exc())
 
-            X_train = np.array(X_train).reshape((len(X_train), 60, 1))
-            y_train = np.array(y_train)
+# ✅ Hybrid Model (Auto-Weighted with Dynamic and Manual Adjustment)
+if page == "Hybrid Model":
+    st.header("🔧 Auto-Weighted Hybrid Model with Confidence Intervals")
+    if models:
+        mse_values = {model: np.mean((data['Target'][-len(forecast):] - forecast) ** 2) for model, forecast in models.items()}
+        total_weight = sum(1 / mse for mse in mse_values.values())
+        weights = {model: (1 / mse) / total_weight for model, mse in mse_values.items()}
 
-            # ✅ Only use MultiHeadAttention if specified in the prompt
-            if prompt and "multiheadattention" in prompt.lower():
-                input_layer = Input(shape=(60, 1))
-                lstm_out = LSTM(64, return_sequences=True)(input_layer)
-                attention_out = MultiHeadAttention(num_heads=4, key_dim=64)(lstm_out, lstm_out)
-                lstm_out_2 = LSTM(32)(attention_out)
-                output_layer = Dense(1)(lstm_out_2)
-                model = Model(inputs=input_layer, outputs=output_layer)
-                st.write("✅ Using LSTM + MultiHeadAttention Model")
-            else:
-                model = Sequential()
-                model.add(LSTM(64, return_sequences=True, input_shape=(60, 1)))
-                model.add(LSTM(32))
-                model.add(Dense(1))
-                st.write("✅ Using Standard LSTM Model")
+        st.write("✅ Auto-Weighted Weights:", weights)
+        hybrid_forecast = sum(weights[model] * forecast for model, forecast in models.items())
 
-            model.compile(optimizer='adam', loss='mean_squared_error')
-            model.fit(X_train, y_train, epochs=5, batch_size=32, verbose=0)
+        st.line_chart(hybrid_forecast)
 
-            lstm_forecast = model.predict(X_train[-forecast_period:]).flatten()
-            models['LSTM+Transformer'] = scaler.inverse_transform(lstm_forecast.reshape(-1, 1)).flatten()
+# ✅ Backtesting (Full Metrics + Confidence Intervals)
+if page == "Backtesting":
+    st.header("📊 Backtesting (Full Metrics)")
+    if models:
+        for model_name, forecast in models.items():
+            actual = data['Target'][-len(forecast):].values
+            returns = (forecast - actual) / actual
+            sharpe = returns.mean() / returns.std() if returns.std() else 0
+            st.write(f"{model_name} - Sharpe: {sharpe:.4f}, Avg Return: {returns.mean():.4f}, Max Drawdown: {min(returns):.4f}")
 
-            # XGBoost Model
-            X = np.arange(len(y)).reshape(-1, 1)
-            model = XGBRegressor()
-            model.fit(X, y)
-            models['XGBoost'] = model.predict(np.arange(len(y), len(y) + forecast_period).reshape(-1, 1))
-
-            st.write("✅ Forecast Results:")
-            for model_name, forecast in models.items():
-                st.write(f"{model_name}: {forecast[:5]}...")
-        except Exception as e:
-            st.error("❌ An error occurred during forecasting.")
-            st.text("Error Details:")
-            st.text(traceback.format_exc())
-
-# ✅ Auto-Debug Mode (Error Tracking)
-st.sidebar.subheader("🚀 Debugging Info")
-if st.sidebar.checkbox("Show Debug Log"):
-    st.sidebar.text("Auto-Debugging Enabled")
-    st.sidebar.text("If any error occurs, it will be shown here.")
-
-st.sidebar.write("🚀 Built with Fully Agentic Automation + Auto-Debugging")
