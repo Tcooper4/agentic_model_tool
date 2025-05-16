@@ -43,21 +43,27 @@ def smart_data_sourcing(prompt):
         data = yf.download(ticker, period="2y", interval="1d")
         data.reset_index(inplace=True)
 
-        # Ensure 'Date' column exists
-        if 'Date' in data.columns:
-            data['Date'] = pd.to_datetime(data['Date'], errors='coerce')
-        elif 'date' in data.columns:
-            data.rename(columns={'date': 'Date'}, inplace=True)
-            data['Date'] = pd.to_datetime(data['Date'], errors='coerce')
-        elif 'DATE' in data.columns:
-            data.rename(columns={'DATE': 'Date'}, inplace=True)
-            data['Date'] = pd.to_datetime(data['Date'], errors='coerce')
-        else:
+        # Automatically Detect Date Column
+        date_columns = [col for col in data.columns if "date" in col.lower() or "timestamp" in col.lower()]
+        if not date_columns:
             st.error("❌ No 'Date' column found in the data.")
             return None
+        
+        # Use the first matching column as the Date column
+        date_column = date_columns[0]
+        data.rename(columns={date_column: "Date"}, inplace=True)
+        data['Date'] = pd.to_datetime(data['Date'], errors='coerce')
 
-        data.dropna(subset=['Date'], inplace=True)  # Ensure no invalid dates
-        data = data[data['Date'] <= datetime.now()]  # Only keep historical dates
+        # Drop rows with invalid dates
+        if 'Date' in data.columns:
+            data.dropna(subset=['Date'], inplace=True)
+        else:
+            st.error("❌ 'Date' column could not be properly parsed.")
+            return None
+
+        # Ensure only historical dates
+        data = data[data['Date'] <= datetime.now()]
+
         return data
 
     st.error("❌ Unable to detect appropriate data source. Please enter a valid request.")
