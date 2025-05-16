@@ -61,24 +61,31 @@ if data is not None and not data.empty:
 
     # Technical Indicators
     def add_technical_indicators(df):
-        # RSI Calculation (Fixed)
+        # Ensure 'Close' column exists
+        if 'Close' not in df.columns:
+            st.error("❌ 'Close' column not found in the data.")
+            return df
+        
+        # RSI Calculation (Fully Vectorized)
         delta = df['Close'].diff()
-        gain = np.where(delta > 0, delta, 0)
-        loss = np.where(delta < 0, abs(delta), 0)
-        
-        avg_gain = pd.Series(gain).rolling(window=14, min_periods=1).mean()
-        avg_loss = pd.Series(loss).rolling(window=14, min_periods=1).mean()
-        
+        gain = delta.where(delta > 0, 0)
+        loss = -delta.where(delta < 0, 0)
+
+        avg_gain = gain.rolling(window=14, min_periods=1).mean()
+        avg_loss = loss.rolling(window=14, min_periods=1).mean()
+
         rs = avg_gain / avg_loss
         df['RSI'] = 100 - (100 / (1 + rs))
 
-        # MACD Calculation
-        df['MACD'] = df['Close'].ewm(span=12).mean() - df['Close'].ewm(span=26).mean()
+        # MACD Calculation (Fully Vectorized)
+        df['MACD'] = df['Close'].ewm(span=12, adjust=False).mean() - df['Close'].ewm(span=26, adjust=False).mean()
         
-        # SMA and EMA
-        df['SMA_50'] = df['Close'].rolling(window=50).mean()
-        df['SMA_200'] = df['Close'].rolling(window=200).mean()
+        # SMA and EMA Calculation (Optimized)
+        df['SMA_50'] = df['Close'].rolling(window=50, min_periods=1).mean()
+        df['SMA_200'] = df['Close'].rolling(window=200, min_periods=1).mean()
+        
         return df
+
 
     data = add_technical_indicators(data)
 
