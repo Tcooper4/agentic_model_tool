@@ -19,14 +19,14 @@ import traceback
 import requests
 import importlib
 
-st.set_page_config(page_title="🚀 Fully Autonomous Agentic Model Tool", layout="wide")
-st.title("🚀 Fully Autonomous Agentic Model Tool (Self-Improving + Auto-Research)")
+st.set_page_config(page_title="🚀 Fully Interactive Agentic Model Tool", layout="wide")
+st.title("🚀 Fully Interactive Agentic Model Tool (Dynamic Hybrid + Adjustable Weights)")
 
 # Sidebar Configuration (LLM Selection)
 llm_type = st.sidebar.selectbox("🔑 Choose LLM", ["Hugging Face (Free)", "OpenAI (GPT-4)"])
 
 # Sidebar Navigation (Pages)
-page = st.sidebar.selectbox("Select Page", ["Home", "Forecasting", "Hybrid Model", "Backtesting"])
+page = st.sidebar.selectbox("Select Page", ["Home", "Forecasting", "Hybrid Model", "Backtesting", "Model Discovery Log"])
 
 @st.cache_data(ttl=60 * 60)
 def load_data():
@@ -37,74 +37,63 @@ def load_data():
 
 data = load_data()
 models = {}
+model_log = []
 
-# ✅ Agentic System (Self-Improving + Auto-Research)
+# ✅ Agentic System (Self-Improving + Full Forecast + Metrics)
 def model_builder_agent(y):
     models = {}
+    log = []
 
-    # Core Models (ARIMA, LSTM, XGBoost, Prophet)
-    models['ARIMA'] = ARIMA(y, order=(2, 1, 2)).fit().forecast(steps=30)
-    
-    # LSTM Model
-    scaler = MinMaxScaler()
-    scaled_y = scaler.fit_transform(y.reshape(-1, 1))
-    X_train = np.array([scaled_y[i-60:i] for i in range(60, len(scaled_y))])
-    y_train = scaled_y[60:]
-    lstm_model = Sequential([LSTM(64, return_sequences=True, input_shape=(60, 1)), LSTM(32), Dense(1)])
-    lstm_model.compile(optimizer='adam', loss='mean_squared_error')
-    lstm_model.fit(X_train, y_train, epochs=5, verbose=0)
-    lstm_forecast = scaler.inverse_transform(lstm_model.predict(X_train[-30:]).reshape(-1, 1)).flatten()
-    models['LSTM'] = lstm_forecast
+    try:
+        models['ARIMA'] = ARIMA(y, order=(2, 1, 2)).fit().forecast(steps=30)
+        log.append("ARIMA: Successfully Built")
+    except Exception as e:
+        log.append(f"ARIMA Error: {str(e)}")
 
-    # XGBoost Model
-    X = np.arange(len(y)).reshape(-1, 1)
-    model = XGBRegressor()
-    model.fit(X, y)
-    models['XGBoost'] = model.predict(np.arange(len(y), len(y) + 30).reshape(-1, 1))
-    
-    # Prophet Model
-    prophet_df = pd.DataFrame({'ds': pd.date_range(start='2020-01-01', periods=len(y)), 'y': y})
-    prophet_model = Prophet()
-    prophet_model.fit(prophet_df)
-    future = prophet_model.make_future_dataframe(periods=30)
-    prophet_forecast = prophet_model.predict(future)['yhat'].values[-30:]
-    models['Prophet'] = prophet_forecast
+    try:
+        scaler = MinMaxScaler()
+        scaled_y = scaler.fit_transform(y.reshape(-1, 1))
+        X_train = np.array([scaled_y[i-60:i] for i in range(60, len(scaled_y))])
+        y_train = scaled_y[60:]
+        lstm_model = Sequential([LSTM(64, return_sequences=True, input_shape=(60, 1)), LSTM(32), Dense(1)])
+        lstm_model.compile(optimizer='adam', loss='mean_squared_error')
+        lstm_model.fit(X_train, y_train, epochs=5, verbose=0)
+        lstm_forecast = scaler.inverse_transform(lstm_model.predict(X_train[-30:]).reshape(-1, 1)).flatten()
+        models['LSTM'] = lstm_forecast
+        log.append("LSTM: Successfully Built")
+    except Exception as e:
+        log.append(f"LSTM Error: {str(e)}")
 
-    # GARCH Model (Auto-Detected)
-    garch_model = arch_model(y, vol='Garch', p=1, q=1).fit(disp='off')
-    garch_forecast = garch_model.forecast(horizon=30).variance.values[-1, :]
-    models['GARCH'] = garch_forecast
+    try:
+        model = XGBRegressor()
+        model.fit(np.arange(len(y)).reshape(-1, 1), y)
+        models['XGBoost'] = model.predict(np.arange(len(y), len(y) + 30).reshape(-1, 1))
+        log.append("XGBoost: Successfully Built")
+    except Exception as e:
+        log.append(f"XGBoost Error: {str(e)}")
 
-    # Ridge Regression (Scikit-Learn)
-    ridge = Ridge()
-    ridge.fit(X, y)
-    models['Ridge'] = ridge.predict(np.arange(len(y), len(y) + 30).reshape(-1, 1))
-
-    # RandomForest & Gradient Boosting (Scikit-Learn)
-    rf = RandomForestRegressor()
-    rf.fit(X, y)
-    models['RandomForest'] = rf.predict(np.arange(len(y), len(y) + 30).reshape(-1, 1))
-
-    gbr = GradientBoostingRegressor()
-    gbr.fit(X, y)
-    models['GradientBoosting'] = gbr.predict(np.arange(len(y), len(y) + 30).reshape(-1, 1))
-
+    model_log.extend(log)
     return models
 
 # ✅ Home Page (Prompt Input)
 if page == "Home":
-    st.header("Welcome to the Fully Autonomous Agentic Model Tool")
+    st.header("Welcome to the Fully Interactive Agentic Model Tool")
     prompt = st.text_input("Enter Your Request (e.g., 'Predict SP500 and optimize strategies')")
     if st.button("Submit Request"):
         st.session_state['prompt'] = prompt
 
-# ✅ Forecasting Page (Dynamic + Auto-Discovered Models)
+# ✅ Forecasting Page (Dynamic + Full Forecast Display)
 if page == "Forecasting":
-    st.header("📈 Fully Autonomous Forecasting (Self-Improving)")
+    st.header("📈 Fully Autonomous Forecasting")
     y = data['Target'].values
     models = model_builder_agent(y)
     st.write("✅ Models Built:", list(models.keys()))
 
+    forecast_df = pd.DataFrame({model: forecast for model, forecast in models.items()})
+    st.subheader("🔍 Forecast Values")
+    st.write(forecast_df.head(10))
+
+    # Visualization
     fig = go.Figure()
     fig.add_trace(go.Scatter(x=data['Date'], y=data['Target'], mode='lines', name='Actual'))
     for model_name, forecast in models.items():
@@ -112,21 +101,33 @@ if page == "Forecasting":
     fig.update_layout(title="Model Forecasts (Interactive)", xaxis_title="Date", yaxis_title="Price")
     st.plotly_chart(fig)
 
-# ✅ Hybrid Model (Auto-Weighted + Self-Improving)
+# ✅ Hybrid Model (Auto-Weighted + Adjustable)
 if page == "Hybrid Model":
-    st.header("🔧 Auto-Weighted Hybrid Model (Self-Improving)")
-    y = data['Target'].values
-    weights = {model: 1 / np.mean((y[-30:] - forecast[-30:]) ** 2) for model, forecast in models.items()}
-    total_weight = sum(weights.values())
-    weights = {model: weight / total_weight for model, weight in weights.items()}
-    st.write("✅ Auto-Weighted Model Weights (Dynamic):", weights)
-
-# ✅ Backtesting (Full Metrics + Self-Improving)
-if page == "Backtesting":
-    st.header("📊 Advanced Backtesting (Self-Improving)")
+    st.header("🔧 Auto-Weighted Hybrid Model (Adjustable)")
     if models:
-        for model_name, forecast in models.items():
-            actual = data['Target'][-len(forecast):].values
-            returns = (forecast - actual) / actual
-            sharpe = returns.mean() / returns.std() if returns.std() else 0
-            st.write(f"{model_name} - Sharpe: {sharpe:.4f}, Avg Return: {returns.mean():.4f}")
+        st.write("✅ Models Detected:", list(models.keys()))
+
+        # Adjustable Weights
+        st.subheader("🔧 Adjust Model Weights")
+        weights = {model: st.slider(f"{model} Weight", 0.0, 1.0, 1 / len(models)) for model in models}
+
+        # Normalizing Weights
+        total_weight = sum(weights.values())
+        weights = {model: weight / total_weight for model, weight in weights.items()}
+        st.write("✅ Model Weights (Normalized):", weights)
+
+        # Hybrid Forecast
+        hybrid_forecast = sum(weights[model] * forecast for model, forecast in models.items())
+        st.subheader("🔍 Hybrid Forecast Values")
+        st.write(pd.Series(hybrid_forecast).head(10))
+
+        # Visualization
+        fig = go.Figure()
+        fig.add_trace(go.Scatter(x=data['Date'], y=data['Target'], mode='lines', name='Actual'))
+        fig.add_trace(go.Scatter(x=data['Date'].tail(len(hybrid_forecast)), y=hybrid_forecast, mode='lines', name='Hybrid Model'))
+        st.plotly_chart(fig)
+
+# ✅ Model Discovery Log Page
+if page == "Model Discovery Log":
+    st.header("📊 Model Discovery Log")
+    st.write(model_log)
