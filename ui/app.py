@@ -74,6 +74,7 @@ if page == "Forecasting":
 
     if 'prompt' in st.session_state and 'forecast' in st.session_state.get('actions', ''):
         st.write(f"✅ Interpreted Request: {st.session_state['prompt']}")
+        prompt = st.session_state.get('prompt', '')
 
         try:
             y = data['Target'].values
@@ -95,18 +96,21 @@ if page == "Forecasting":
             X_train = np.array(X_train).reshape((len(X_train), 60, 1))
             y_train = np.array(y_train)
 
-            if "MultiHeadAttention" in prompt:
+            # ✅ Only use MultiHeadAttention if specified in the prompt
+            if prompt and "multiheadattention" in prompt.lower():
                 input_layer = Input(shape=(60, 1))
                 lstm_out = LSTM(64, return_sequences=True)(input_layer)
                 attention_out = MultiHeadAttention(num_heads=4, key_dim=64)(lstm_out, lstm_out)
                 lstm_out_2 = LSTM(32)(attention_out)
                 output_layer = Dense(1)(lstm_out_2)
                 model = Model(inputs=input_layer, outputs=output_layer)
+                st.write("✅ Using LSTM + MultiHeadAttention Model")
             else:
                 model = Sequential()
                 model.add(LSTM(64, return_sequences=True, input_shape=(60, 1)))
                 model.add(LSTM(32))
                 model.add(Dense(1))
+                st.write("✅ Using Standard LSTM Model")
 
             model.compile(optimizer='adam', loss='mean_squared_error')
             model.fit(X_train, y_train, epochs=5, batch_size=32, verbose=0)
