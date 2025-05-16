@@ -42,8 +42,21 @@ def smart_data_sourcing(prompt):
         st.write(f"✅ Fetching Real-Time Data for {ticker} (Yahoo Finance)")
         data = yf.download(ticker, period="2y", interval="1d")
         data.reset_index(inplace=True)
-        data['Date'] = pd.to_datetime(data['Date'], errors='coerce')
-        data = data.dropna(subset=['Date'])  # Ensure no invalid dates
+
+        # Ensure 'Date' column exists
+        if 'Date' in data.columns:
+            data['Date'] = pd.to_datetime(data['Date'], errors='coerce')
+        elif 'date' in data.columns:
+            data.rename(columns={'date': 'Date'}, inplace=True)
+            data['Date'] = pd.to_datetime(data['Date'], errors='coerce')
+        elif 'DATE' in data.columns:
+            data.rename(columns={'DATE': 'Date'}, inplace=True)
+            data['Date'] = pd.to_datetime(data['Date'], errors='coerce')
+        else:
+            st.error("❌ No 'Date' column found in the data.")
+            return None
+
+        data.dropna(subset=['Date'], inplace=True)  # Ensure no invalid dates
         data = data[data['Date'] <= datetime.now()]  # Only keep historical dates
         return data
 
