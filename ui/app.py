@@ -48,8 +48,11 @@ def smart_data_sourcing(prompt):
             
             data.reset_index(inplace=True)
             
+            # Ensure column names are strings (handle MultiIndex)
+            data.columns = [str(col) if isinstance(col, tuple) else col for col in data.columns]
+
             # Automatically Detect Date Column
-            possible_date_columns = [col for col in data.columns if any(date_kw in col.lower() for date_kw in ['date', 'timestamp', 'time', 'datetime'])]
+            possible_date_columns = [col for col in data.columns if any(date_kw in str(col).lower() for date_kw in ['date', 'timestamp', 'time', 'datetime'])]
             
             if not possible_date_columns:
                 st.error("❌ No 'Date' column found in the data. Unable to proceed.")
@@ -70,7 +73,7 @@ def smart_data_sourcing(prompt):
             st.error(f"❌ Error fetching data for {ticker}: {str(e)}")
             return None
 
-    st.error("❌ Unable to detect appropriate data source. Please enter a valid request.")
+    st.error("❌ Unable to detect appropriate data source. Please enter a prompt or upload a file.")
     return None
 
 # Load Data Based on User Prompt
