@@ -23,11 +23,6 @@ auto_reoptimize = st.sidebar.checkbox("🔄 Auto Re-Optimize Models Every Hour",
 refresh_interval = st.sidebar.number_input("Auto-Refresh Interval (Seconds)", min_value=60, value=3600)
 custom_strategy = st.sidebar.checkbox("📝 Enable Custom Strategy Creation", value=True)
 
-# LLM Selector
-llm_type = st.sidebar.selectbox("🔑 Choose LLM", ["Hugging Face (Free)", "OpenAI (GPT-4)"])
-if llm_type == "OpenAI (GPT-4)":
-    openai_api_key = st.sidebar.text_input("OpenAI API Key (Required for GPT-4)", type="password")
-
 # Enhanced Smart Data Sourcing (Prompt-Based)
 @st.cache_data(ttl=60 * 60)
 def smart_data_sourcing(prompt):
@@ -47,7 +42,9 @@ def smart_data_sourcing(prompt):
         st.write(f"✅ Fetching Real-Time Data for {ticker} (Yahoo Finance)")
         data = yf.download(ticker, period="2y", interval="1d")
         data.reset_index(inplace=True)
-        data['Date'] = pd.to_datetime(data['Date'])
+        data['Date'] = pd.to_datetime(data['Date'], errors='coerce')
+        data = data.dropna(subset=['Date'])  # Ensure no invalid dates
+        data = data[data['Date'] <= datetime.now()]  # Only keep historical dates
         return data
 
     st.error("❌ Unable to detect appropriate data source. Please enter a valid request.")
@@ -60,15 +57,29 @@ if data is not None and not data.empty:
     st.write("✅ Real-Time Data Loaded")
     st.write(data.head())
 
-    # Add Technical Indicators
+    # Add Technical Indicators (Fully Vectorized RSI)
     def add_technical_indicators(df):
-        df['RSI'] = 100 - (100 / (1 + df['Close'].diff().apply(lambda x: max(x, 0)).rolling(14).mean() / abs(df['Close'].diff()).rolling(14).mean()))
+        # RSI Calculation (Vectorized)
+        delta = df['Close'].diff()
+        gain = delta.where(delta > 0, 0)
+        loss = -delta.where(delta < 0, 0)
+        
+        avg_gain = gain.rolling(window=14, min_periods=1).mean()
+        avg_loss = loss.rolling(window=14, min_periods=1).mean()
+        rs = avg_gain / avg_loss
+        df['RSI'] = 100 - (100 / (1 + rs))
+
+        # MACD Calculation
         df['MACD'] = df['Close'].ewm(span=12).mean() - df['Close'].ewm(span=26).mean()
         df['SMA_50'] = df['Close'].rolling(window=50).mean()
         df['SMA_200'] = df['Close'].rolling(window=200).mean()
         return df
 
     data = add_technical_indicators(data)
+
+    # Display Corrected Data (Historical Dates Only)
+    st.subheader("📊 Historical Data Visualization")
+    st.line_chart(data.set_index("Date")['Close'])
 
     # Auto-Optimization & Backtesting with Ensemble Model
     def auto_optimize(y):
@@ -98,6 +109,7 @@ if data is not None and not data.empty:
             forecast = model.predict(future)
             return forecast['yhat'].tail(forecast_period).values
 
+        y = data['Close'].values
         arima_preds = train_arima(y)
         lstm_preds = train_lstm(y)
         prophet_preds = train_prophet(data)
@@ -111,6 +123,7 @@ if data is not None and not data.empty:
         ensemble_preds = (weights[0] * arima_preds + weights[1] * lstm_preds + weights[2] * prophet_preds)
 
         # Visualization
+        st.subheader("📈 Forecasting & Ensemble Visualization")
         plt.figure(figsize=(14, 7))
         plt.plot(data['Close'], label='True Values', color='black')
         plt.plot(arima_preds, label='ARIMA', linestyle='--')
@@ -122,19 +135,7 @@ if data is not None and not data.empty:
 
         return ensemble_preds
 
-    y = data['Close'].values
-    ensemble_preds = auto_optimize(y)
+    ensemble_preds = auto_optimize(data['Close'].values)
 
-    # Custom Strategy Creation
-    if custom_strategy:
-        st.subheader("📝 Custom Strategy Creation")
-        custom_signal = st.text_input("Enter Custom Strategy Logic (e.g., 'RSI > 70 and MACD > 0')")
-        if custom_signal:
-            try:
-                data['Custom_Signal'] = data.eval(custom_signal).astype(int)
-                data['Custom_Strategy_Return'] = data['Custom_Signal'].shift(1) * data['Close'].pct_change()
-                st.write(f"✅ Custom Strategy Performance: {data['Custom_Strategy_Return'].cumsum().iloc[-1]:.4f}")
-            except:
-                st.error("❌ Invalid custom strategy. Please check your syntax.")
 else:
     st.error("❌ No Data Available. Please enter a prompt or upload a file.")
