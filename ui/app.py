@@ -2,170 +2,126 @@ import pandas as pd
 import numpy as np
 import streamlit as st
 from datetime import datetime, timedelta
-from statsmodels.tsa.arima.model import ARIMA
-from sklearn.metrics import mean_squared_error
-from sklearn.preprocessing import MinMaxScaler
-from keras.models import Sequential
-from keras.layers import LSTM, Dense
-from prophet import Prophet
 import yfinance as yf
-import matplotlib.pyplot as plt
-import seaborn as sns
-import requests
-import openai
-import time
+import plotly.graph_objects as go
+import json
+import os
 
 st.set_page_config(page_title="🚀 Advanced Agentic Model Creation Tool", layout="wide")
-st.title("🚀 Advanced Agentic Model Creation Tool (Real-Time Data, Backtesting, Strategy Optimization, Auto-Switching)")
+st.title("🚀 Advanced Agentic Model Creation Tool (Real-Time Data, Auto-Run, Best Strategy Detection)")
 
 # Sidebar Configuration
 st.sidebar.header("🔧 Configuration")
 prompt = st.sidebar.text_input("Enter Your Request or Prompt (e.g., 'Predict SP500')", "")
 forecast_period = st.sidebar.number_input("Forecast Period (Days)", min_value=1, max_value=365, value=7)
-auto_reoptimize = st.sidebar.checkbox("🔄 Auto Re-Optimize Models Every Hour", value=True)
-refresh_interval = st.sidebar.number_input("Auto-Refresh Interval (Seconds)", min_value=60, value=3600)
-custom_strategy = st.sidebar.checkbox("📝 Enable Custom Strategy Creation", value=True)
+auto_run = st.sidebar.checkbox("🔄 Auto-Run Strategies Daily", value=True)
+save_file = "optimized_strategies.json"
+log_file = "strategy_performance_log.csv"
 
-# Choose LLM (Hugging Face or OpenAI)
-llm_type = st.sidebar.selectbox("🔑 Choose LLM", ["Hugging Face (Free)", "OpenAI (GPT-4)"])
-if llm_type == "OpenAI (GPT-4)":
-    openai_api_key = st.sidebar.text_input("OpenAI API Key (Required for GPT-4)", type="password")
-    if openai_api_key:
-        openai.api_key = openai_api_key
-        st.sidebar.write("💡 Estimated Cost: ~$0.03 per 1,000 tokens")
-
-# Enhanced Smart Data Sourcing (Real-Time)
+# Smart Data Sourcing (Real-Time)
 @st.cache_data(ttl=60 * 60)
-def smart_data_sourcing(prompt):
-    prompt = prompt.lower()
-    ticker = None
-    
-    if "sp500" in prompt:
-        ticker = "SPY"
-    elif "stock" in prompt or "etf" in prompt:
-        words = prompt.split()
-        for word in words:
-            if word.isalpha() and len(word) <= 5:
-                ticker = word.upper()
-                break
-    
-    if ticker:
-        st.write(f"✅ Fetching Real-Time Data for {ticker} (Yahoo Finance)")
-        try:
-            data = yf.download(ticker, period="2y", interval="1d")
-            if data.empty:
-                st.error(f"❌ No data found for {ticker}. Please enter a valid ticker.")
-                return None
-            data.reset_index(inplace=True)
-            return data
-        except Exception as e:
-            st.error(f"❌ Error fetching data for {ticker}: {str(e)}")
-            return None
+def fetch_data(ticker: str):
+    try:
+        data = yf.download(ticker, period="2y", interval="1d")
+        data.reset_index(inplace=True)
+        return data
+    except Exception as e:
+        st.error(f"❌ Error fetching data: {str(e)}")
+        return None
 
-    st.error("❌ Unable to detect appropriate data source. Please enter a valid request.")
+# Data Source Detection
+def detect_data_source(prompt):
+    prompt = prompt.lower()
+    if "sp500" in prompt:
+        return "SPY"
+    words = prompt.split()
+    for word in words:
+        if word.isalpha() and len(word) <= 5:
+            return word.upper()
     return None
 
-# Load Data Based on User Prompt
-data = smart_data_sourcing(prompt)
+ticker = detect_data_source(prompt)
+data = fetch_data(ticker) if ticker else None
 
 if data is not None and not data.empty:
-    st.write("✅ Real-Time Data Loaded")
+    st.write(f"✅ Data Loaded for {ticker}")
     st.write(data.head())
 
-    # Target Column Selection
-    target_column = st.selectbox("Select Target Column", data.columns, index=data.columns.get_loc("Close") if "Close" in data.columns else -1)
+    # Load Saved Strategies
+    def load_optimized_strategies():
+        if os.path.exists(save_file):
+            with open(save_file, "r") as file:
+                return json.load(file)
+        return {}
 
-    if target_column:
-        y = data[target_column].values
-        data['Date'] = pd.to_datetime(data['Date'])
-        X = data[['Date']]
+    optimized_strategies = load_optimized_strategies()
+    st.subheader("✅ Loaded Optimized Strategies")
+    st.write(optimized_strategies)
 
-        # Add Technical Indicators
-        def add_technical_indicators(df):
-            df['RSI'] = df['Close'].diff().apply(lambda x: max(x, 0)).rolling(14).mean() / abs(df['Close'].diff()).rolling(14).mean() * 100
-            df['MACD'] = df['Close'].ewm(span=12).mean() - df['Close'].ewm(span=26).mean()
-            df['SMA_50'] = df['Close'].rolling(window=50).mean()
-            df['SMA_200'] = df['Close'].rolling(window=200).mean()
-            return df
+    # Apply and Evaluate Strategies
+    def apply_strategy(df, strategy, params):
+        if strategy == "RSI Overbought/Oversold":
+            period = params
+            df['RSI'] = df['Close'].diff().apply(lambda x: max(x, 0)).rolling(period).mean() / abs(df['Close'].diff()).rolling(period).mean() * 100
+            df['Signal'] = np.where(df['RSI'] > 70, -1, np.where(df['RSI'] < 30, 1, 0))
+        elif strategy == "MACD Crossover":
+            fast, slow = params
+            df['MACD'] = df['Close'].ewm(span=fast).mean() - df['Close'].ewm(span=slow).mean()
+            df['Signal'] = np.where(df['MACD'] > 0, 1, -1)
 
-        data = add_technical_indicators(data)
+        df['Strategy_Return'] = df['Signal'].shift(1) * df['Close'].pct_change()
+        df['Cumulative_Return'] = df['Strategy_Return'].cumsum()
+        return df
 
-        # Auto-Optimization & Backtesting with Ensemble Model
-        def auto_optimize(X, y):
-            st.subheader("🔧 Auto-Optimize & Ensemble Model")
-            models = []
+    # Strategy Performance Logging
+    def log_strategy_performance(strategy, params, performance):
+        if not os.path.exists(log_file):
+            with open(log_file, "w") as file:
+                file.write("Date,Strategy,Parameters,Cumulative_Return\n")
+        
+        with open(log_file, "a") as file:
+            file.write(f"{datetime.now().strftime('%Y-%m-%d')},{strategy},{json.dumps(params)},{performance:.4f}\n")
 
-            def train_arima(y):
-                model = ARIMA(y, order=(5, 1, 0))
-                model_fit = model.fit()
-                forecast = model_fit.forecast(steps=forecast_period)
-                return forecast
+    # Auto-Run Strategies Daily
+    if auto_run:
+        for strategy, params in optimized_strategies.items():
+            data = apply_strategy(data, strategy, params)
+            cumulative_return = data['Cumulative_Return'].iloc[-1]
+            log_strategy_performance(strategy, params, cumulative_return)
+        st.success("✅ Auto-Run Completed: Strategies have been logged.")
 
-            def train_lstm(y):
-                scaler = MinMaxScaler()
-                scaled_y = scaler.fit_transform(y.reshape(-1, 1))
-                X_train, y_train = [], []
+    # Display Strategy Comparison
+    st.subheader("📊 Strategy Comparison")
+    fig = go.Figure()
 
-                for i in range(60, len(scaled_y)):
-                    X_train.append(scaled_y[i-60:i, 0])
-                    y_train.append(scaled_y[i, 0])
-                
-                X_train = np.array(X_train)
-                X_train = X_train.reshape((X_train.shape[0], X_train.shape[1], 1))
-                y_train = np.array(y_train)
+    for strategy, params in optimized_strategies.items():
+        data = apply_strategy(data, strategy, params)
+        fig.add_trace(go.Scatter(x=data['Date'], y=data['Cumulative_Return'], name=f"{strategy}"))
 
-                model = Sequential()
-                model.add(LSTM(50, return_sequences=True))
-                model.add(LSTM(50))
-                model.add(Dense(1))
-                model.compile(optimizer='adam', loss='mean_squared_error')
-                model.fit(X_train, y_train, epochs=5, batch_size=32, verbose=0)
-                preds = model.predict(X_train)
-                return preds.flatten()
+    st.plotly_chart(fig, use_container_width=True)
 
-            def train_prophet(X, y):
-                prophet_df = pd.DataFrame({'ds': X['Date'], 'y': y})
-                model = Prophet()
-                model.fit(prophet_df)
-                future = model.make_future_dataframe(periods=forecast_period)
-                forecast = model.predict(future)
-                return forecast['yhat'][-forecast_period:]
+    # Best Strategy of All-Time
+    st.subheader("🏆 Best Strategy of All-Time")
+    if os.path.exists(log_file):
+        performance_log = pd.read_csv(log_file)
+        best_strategy = performance_log.groupby("Strategy").Cumulative_Return.mean().idxmax()
+        best_return = performance_log.groupby("Strategy").Cumulative_Return.mean().max()
+        st.write(f"✅ Best Strategy: {best_strategy} with Average Return: {best_return:.4f}")
+        st.write(performance_log)
+    else:
+        st.write("❌ No performance data available yet.")
 
-            arima_preds = train_arima(y)
-            lstm_preds = train_lstm(y)
-            prophet_preds = train_prophet(X, y)
+    # Save and Manage Strategies
+    st.subheader("💾 Save and Manage Strategies")
+    if st.button("Save Optimized Strategies"):
+        with open(save_file, "w") as file:
+            json.dump(optimized_strategies, file)
+        st.success("✅ Strategies Saved!")
 
-            # Ensemble Forecast (Weighted Average)
-            ensemble_preds = (arima_preds + lstm_preds[:len(arima_preds)] + prophet_preds) / 3
+    if st.button("Clear Performance Log"):
+        if os.path.exists(log_file):
+            os.remove(log_file)
+        st.success("✅ Performance Log Cleared!")
 
-            # Strategy Optimization (SMA Crossover)
-            data['Signal'] = np.where(data['SMA_50'] > data['SMA_200'], 1, 0)
-            data['Strategy_Return'] = data['Signal'].shift(1) * data['Close'].pct_change()
-            strategy_performance = data['Strategy_Return'].cumsum()
-
-            # Visualization
-            st.subheader("📈 Forecasting & Strategy Visualization")
-            plt.figure(figsize=(14, 7))
-            plt.plot(data['Close'], label='True Values', color='black')
-            plt.plot(arima_preds, label='ARIMA', linestyle='--')
-            plt.plot(lstm_preds[:len(arima_preds)], label='LSTM', linestyle='--')
-            plt.plot(prophet_preds, label='Prophet', linestyle='--')
-            plt.plot(ensemble_preds, label='Ensemble', color='red', linewidth=2)
-            plt.legend()
-            st.pyplot(plt)
-
-            st.subheader("🔍 Strategy Backtesting Results")
-            st.write(f"✅ Strategy Performance: {strategy_performance.iloc[-1]:.4f}")
-
-            # Custom Strategy (Optional)
-            if custom_strategy:
-                st.subheader("📝 Custom Strategy Creation")
-                custom_signal = st.text_input("Enter Custom Strategy Logic (e.g., 'RSI > 70 and MACD > 0')")
-                if custom_signal:
-                    data['Custom_Signal'] = data.eval(custom_signal).astype(int)
-                    data['Custom_Strategy_Return'] = data['Custom_Signal'].shift(1) * data['Close'].pct_change()
-                    st.write(f"✅ Custom Strategy Performance: {data['Custom_Strategy_Return'].cumsum().iloc[-1]:.4f}")
-
-        auto_optimize(X, y)
 else:
     st.error("❌ No Data Available. Please enter a prompt or upload a file.")
