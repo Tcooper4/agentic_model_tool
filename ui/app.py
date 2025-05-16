@@ -61,8 +61,21 @@ if data is not None and not data.empty:
 
     # Technical Indicators
     def add_technical_indicators(df):
-        df['RSI'] = df['Close'].diff().apply(lambda x: max(x, 0)).rolling(14).mean() / abs(df['Close'].diff()).rolling(14).mean() * 100
+        # RSI Calculation (Fixed)
+        delta = df['Close'].diff()
+        gain = np.where(delta > 0, delta, 0)
+        loss = np.where(delta < 0, abs(delta), 0)
+        
+        avg_gain = pd.Series(gain).rolling(window=14, min_periods=1).mean()
+        avg_loss = pd.Series(loss).rolling(window=14, min_periods=1).mean()
+        
+        rs = avg_gain / avg_loss
+        df['RSI'] = 100 - (100 / (1 + rs))
+
+        # MACD Calculation
         df['MACD'] = df['Close'].ewm(span=12).mean() - df['Close'].ewm(span=26).mean()
+        
+        # SMA and EMA
         df['SMA_50'] = df['Close'].rolling(window=50).mean()
         df['SMA_200'] = df['Close'].rolling(window=200).mean()
         return df
